@@ -104,7 +104,12 @@ body[data-interactive="true"] #drag-handle {
   opacity: var(--subtitle-opacity);
   transition: opacity 140ms ease;
   color: #ffffff;
-  text-shadow: 0 1px 2px rgba(15, 23, 42, 0.18);
+  text-shadow:
+    0 1px 0 rgba(15, 23, 42, 0.66),
+    1px 0 0 rgba(15, 23, 42, 0.56),
+    -1px 0 0 rgba(15, 23, 42, 0.56),
+    0 -1px 0 rgba(15, 23, 42, 0.48),
+    0 2px 6px rgba(15, 23, 42, 0.24);
   user-select: none;
   word-break: break-word;
   white-space: pre-wrap;
@@ -115,19 +120,30 @@ body[data-subtitle-hovered="true"] #subtitle-text {
 }
 
 .subtitle-segment {
-  display: inline;
-  background-image: linear-gradient(
-    90deg,
-    #fde68a 0%,
-    #fde68a var(--segment-fill),
-    rgba(255, 255, 255, 0.96) var(--segment-fill),
-    rgba(255, 255, 255, 0.96) 100%
-  );
-  background-clip: text;
-  -webkit-background-clip: text;
-  color: transparent;
-  -webkit-text-fill-color: transparent;
+  position: relative;
+  display: inline-block;
+  vertical-align: baseline;
   transition: opacity 160ms ease-out;
+}
+
+.subtitle-segment-base,
+.subtitle-segment-fill {
+  display: block;
+  white-space: pre;
+}
+
+.subtitle-segment-base {
+  color: rgba(255, 255, 255, 0.99);
+}
+
+.subtitle-segment-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--segment-fill);
+  overflow: hidden;
+  color: #fbbf24;
+  pointer-events: none;
 }
 
 .subtitle-segment[data-karaoke-state="future"] {

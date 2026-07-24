@@ -217,9 +217,19 @@ const rebuildSubtitleNodes = () => {
 
     const span = document.createElement("span");
     span.className = "subtitle-segment";
-    span.textContent = parts.core;
     span.dataset.karaokeState = "future";
     span.style.setProperty("--segment-fill", "0%");
+
+    const base = document.createElement("span");
+    base.className = "subtitle-segment-base";
+    base.textContent = parts.core;
+
+    const fill = document.createElement("span");
+    fill.className = "subtitle-segment-fill";
+    fill.setAttribute("aria-hidden", "true");
+    fill.textContent = parts.core;
+
+    span.append(base, fill);
     fragment.append(span);
     renderedKaraokeSegments.push(segment);
     renderedKaraokeSpans.push(span);
