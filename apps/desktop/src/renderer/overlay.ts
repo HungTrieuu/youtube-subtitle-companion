@@ -22,6 +22,7 @@ let currentConfig: AppConfig | null = null;
 let currentSubtitle: SubtitleUpdateMessage | null = null;
 let currentConnection: OverlayConnectionState | null = null;
 let currentPlayerState: OverlayInitialState["playerState"] = null;
+let temporaryDimActive = false;
 
 const formatTime = (totalSeconds: number): string => {
   const safeSeconds = Math.max(0, Math.floor(totalSeconds));
@@ -51,6 +52,10 @@ const shorten = (value: string | null, maxLength: number): string | null => {
   }
 
   return value.length > maxLength ? `${value.slice(0, maxLength - 1)}...` : value;
+};
+
+const syncDimState = () => {
+  document.body.dataset.subtitleHovered = String(temporaryDimActive);
 };
 
 const renderStatus = () => {
@@ -149,8 +154,10 @@ const loadInitialState = async (): Promise<OverlayInitialState> => {
 
 const applyConfig = (config: AppConfig) => {
   currentConfig = config;
+  const hoverOpacity = Math.max(0.12, Math.min(config.opacity * 0.35, config.opacity));
   document.documentElement.style.setProperty("--font-size", `${config.fontSize}px`);
   document.documentElement.style.setProperty("--subtitle-opacity", `${config.opacity}`);
+  document.documentElement.style.setProperty("--subtitle-hover-opacity", `${hoverOpacity}`);
   document.documentElement.style.setProperty("--subtitle-align", config.alignment);
   document.body.dataset.interactive = String(!config.clickThrough);
   renderStatus();
@@ -164,6 +171,7 @@ const bootstrap = async () => {
   applyConfig(initialState.config);
   renderSubtitle();
   renderStatus();
+  syncDimState();
 
   window.overlayApi.onSubtitle((subtitle) => {
     currentSubtitle = subtitle;
@@ -183,6 +191,11 @@ const bootstrap = async () => {
   window.overlayApi.onPlayerState((playerState) => {
     currentPlayerState = playerState;
     renderStatus();
+  });
+
+  window.overlayApi.onTemporaryDim((active) => {
+    temporaryDimActive = active;
+    syncDimState();
   });
 };
 

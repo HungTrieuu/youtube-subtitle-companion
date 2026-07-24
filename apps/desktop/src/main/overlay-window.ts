@@ -1,5 +1,6 @@
 import { BrowserWindow, screen } from "electron";
 import path from "node:path";
+import { setTimeout } from "node:timers";
 
 import type {
   PlayerStateMessage,
@@ -88,10 +89,8 @@ export class OverlayWindowController {
         return;
       }
 
-      const key = input.key.toLowerCase();
-      if (key === "escape") {
+      if (input.key.toLowerCase() === "escape") {
         this.deactivateMoveOverlayMode();
-        return;
       }
     });
 
@@ -177,6 +176,10 @@ export class OverlayWindowController {
 
   public sendConfig(): void {
     this.window.webContents.send(IPC_CHANNELS.configUpdated, this.getRenderedConfig());
+  }
+
+  public sendTemporaryDimState(active: boolean): void {
+    this.window.webContents.send(IPC_CHANNELS.temporaryDimUpdated, active);
   }
 
   public getRenderedConfig(): AppConfig {
@@ -267,7 +270,7 @@ export class OverlayWindowController {
       return;
     }
 
-    globalThis.setTimeout(() => {
+    setTimeout(() => {
       if (this.window.isDestroyed() || !this.currentConfig.overlayVisible || this.moveOverlayModeActive) {
         return;
       }

@@ -12,6 +12,7 @@ export const IPC_CHANNELS = {
   connectionUpdated: "overlay:connection-updated",
   playerStateUpdated: "overlay:player-state-updated",
   subtitleUpdated: "overlay:subtitle-updated",
+  temporaryDimUpdated: "overlay:temporary-dim-updated",
   sendPlayerCommand: "overlay:send-player-command",
   toggleOverlay: "overlay:toggle-overlay",
   toggleInteraction: "overlay:toggle-interaction",
@@ -30,6 +31,7 @@ export type OverlayApi = {
   onConnection(listener: (connection: OverlayConnectionState) => void): () => void;
   onPlayerState(listener: (playerState: PlayerStateMessage | null) => void): () => void;
   onSubtitle(listener: (subtitle: SubtitleUpdateMessage | null) => void): () => void;
+  onTemporaryDim(listener: (active: boolean) => void): () => void;
   sendPlayerCommand(command: PlayerCommandMessage): void;
   toggleOverlay(): void;
   toggleInteraction(): void;

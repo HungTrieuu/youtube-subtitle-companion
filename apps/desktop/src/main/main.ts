@@ -29,9 +29,11 @@ let trayController: TrayController;
 let websocketServer: LocalWebSocketServer;
 let isQuitting = false;
 let registeredHotkeysFingerprint: string | null = null;
+let temporaryDimResetTimer: ReturnType<typeof setTimeout> | null = null;
 const hotkeyCooldowns = new Map<string, number>();
 const useWayland = process.env.YSC_FORCE_WAYLAND === "1";
 const forceX11 = process.platform === "linux" && !useWayland;
+const temporaryDimDurationMs = 2_000;
 
 if (process.platform === "linux") {
   if (forceX11) {
@@ -131,6 +133,19 @@ const refreshHotkeys = (): void => {
         logger.debug("hotkeys", "Triggered moveOverlay hotkey");
         overlayWindow.toggleMoveOverlayMode();
       });
+    },
+    temporaryDim: () => {
+      logger.debug("hotkeys", "Triggered temporaryDim hotkey");
+      overlayWindow.sendTemporaryDimState(true);
+
+      if (temporaryDimResetTimer !== null) {
+        clearTimeout(temporaryDimResetTimer);
+      }
+
+      temporaryDimResetTimer = setTimeout(() => {
+        temporaryDimResetTimer = null;
+        overlayWindow.sendTemporaryDimState(false);
+      }, temporaryDimDurationMs);
     },
     increaseFont: () => {
       logger.debug("hotkeys", "Triggered increaseFont hotkey");
@@ -453,6 +468,10 @@ const bootstrap = async (): Promise<void> => {
   app.on("before-quit", () => {
     isQuitting = true;
     overlayWindow.setQuitting(true);
+    if (temporaryDimResetTimer !== null) {
+      clearTimeout(temporaryDimResetTimer);
+      temporaryDimResetTimer = null;
+    }
     globalShortcut.unregisterAll();
     trayController.destroy();
     void websocketServer.stop().catch((error) => {

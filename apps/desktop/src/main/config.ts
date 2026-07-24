@@ -22,6 +22,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     toggleOverlay: "Control+Alt+S",
     toggleInteraction: "Control+Alt+I",
     moveOverlay: "Control+Alt+Y",
+    temporaryDim: "Control+Alt+D",
     increaseFont: "Control+Alt+Up",
     decreaseFont: "Control+Alt+Down"
   }
@@ -45,6 +46,7 @@ export const appConfigSchema = z.object({
     toggleOverlay: z.string().min(1),
     toggleInteraction: z.string().min(1),
     moveOverlay: z.string().min(1),
+    temporaryDim: z.string().min(1),
     increaseFont: z.string().min(1),
     decreaseFont: z.string().min(1)
   })

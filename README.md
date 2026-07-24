@@ -134,6 +134,7 @@ pnpm build
 - `Ctrl+Alt+S`: show or hide overlay
 - `Ctrl+Alt+I`: toggle interaction mode
 - `Ctrl+Alt+Y`: toggle move-overlay mode
+- `Ctrl+Alt+D`: temporarily dim subtitle text for 2 seconds
 - `Ctrl+Alt+Up`: increase font size
 - `Ctrl+Alt+Down`: decrease font size
 

@@ -25,6 +25,7 @@ export type AppConfig = {
     toggleOverlay: string;
     toggleInteraction: string;
     moveOverlay: string;
+    temporaryDim: string;
     increaseFont: string;
     decreaseFont: string;
   };

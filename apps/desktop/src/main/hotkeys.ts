@@ -10,6 +10,7 @@ type HotkeyHandlers = {
   toggleOverlay: () => void;
   toggleInteraction: () => void;
   moveOverlay: () => void;
+  temporaryDim: () => void;
   increaseFont: () => void;
   decreaseFont: () => void;
 };
@@ -47,6 +48,7 @@ export const registerHotkeys = (config: AppConfig, handlers: HotkeyHandlers): vo
     "toggleInteraction"
   );
   registerShortcut(config.hotkeys.moveOverlay, () => handlers.moveOverlay(), "moveOverlay");
+  registerShortcut(config.hotkeys.temporaryDim, () => handlers.temporaryDim(), "temporaryDim");
   registerShortcut(config.hotkeys.increaseFont, () => handlers.increaseFont(), "increaseFont");
   registerShortcut(config.hotkeys.decreaseFont, () => handlers.decreaseFont(), "decreaseFont");
 };

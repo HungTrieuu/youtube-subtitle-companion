@@ -35,6 +35,8 @@ const api: OverlayApi = {
     subscribe<PlayerStateMessage | null>(IPC_CHANNELS.playerStateUpdated, listener),
   onSubtitle: (listener: (subtitle: SubtitleUpdateMessage | null) => void) =>
     subscribe<SubtitleUpdateMessage | null>(IPC_CHANNELS.subtitleUpdated, listener),
+  onTemporaryDim: (listener: (active: boolean) => void) =>
+    subscribe<boolean>(IPC_CHANNELS.temporaryDimUpdated, listener),
   sendPlayerCommand: (command: PlayerCommandMessage) => {
     ipcRenderer.send(IPC_CHANNELS.sendPlayerCommand, command);
   },
