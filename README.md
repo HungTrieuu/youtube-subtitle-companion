@@ -12,6 +12,7 @@ It uses a Chrome-compatible extension to read the active YouTube player and capt
 - Supports play or pause, seek, show or hide overlay, interaction mode, and overlay move mode.
 - Handles YouTube SPA navigation and reconnects automatically.
 - Uses transcript timeline fallback so subtitle updates can keep working better when the YouTube tab is backgrounded.
+- Uses segment-level transcript timing when YouTube exposes it, so the overlay can animate karaoke-style highlighting locally on the desktop side.
 
 ## Architecture
 

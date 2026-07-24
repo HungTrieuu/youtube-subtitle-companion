@@ -23,6 +23,36 @@ describe("message schema validation", () => {
     expect(message?.type).toBe("player.state");
   });
 
+  it("accepts subtitle timelines with timed segments", () => {
+    const message = parseExtensionMessage({
+      type: "subtitle.timeline",
+      timestamp: 1,
+      videoId: "abc123",
+      cues: [
+        {
+          startMs: 1000,
+          endMs: 2200,
+          text: "Hello world",
+          segments: [
+            {
+              startMs: 1000,
+              endMs: 1500,
+              text: "Hello"
+            },
+            {
+              startMs: 1500,
+              endMs: 2200,
+              text: " world"
+            }
+          ]
+        }
+      ]
+    });
+
+    expect(message).not.toBeNull();
+    expect(message?.type).toBe("subtitle.timeline");
+  });
+
   it("rejects malformed extension payloads", () => {
     const message = parseExtensionMessage({
       type: "subtitle.update",

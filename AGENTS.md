@@ -22,8 +22,10 @@
   - read caption track metadata from page context through `page-bridge.ts`
   - intercept YouTube `timedtext` network responses from page context
   - parse transcript payloads into a subtitle timeline
+  - preserve segment-level timing inside a cue when `json3` / `srv3` provides it
   - extrapolate playback time when the YouTube tab is backgrounded
 - Desktop can now consume both immediate subtitle updates and subtitle timeline data.
+- Desktop overlay renderer can animate karaoke-style highlighting from local playback time when a subtitle cue includes timed `segments`.
 - Overlay IPC bootstrap was previously failing because handlers were registered too late; that was fixed by registering IPC before `overlayWindow.load()`.
 
 ## Important Desktop Behavior

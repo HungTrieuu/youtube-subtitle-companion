@@ -436,7 +436,11 @@ export class LocalWebSocketServer {
     const previousSubtitle = record.subtitle;
     const nextSubtitle = this.getTimelineSubtitle(record);
 
-    if (previousSubtitle?.text === nextSubtitle?.text) {
+    if (
+      previousSubtitle?.text === nextSubtitle?.text &&
+      previousSubtitle?.cueStartMs === nextSubtitle?.cueStartMs &&
+      previousSubtitle?.cueEndMs === nextSubtitle?.cueEndMs
+    ) {
       return;
     }
 
@@ -509,7 +513,10 @@ export class LocalWebSocketServer {
       timestamp: Date.now(),
       videoId: record.playerState.videoId,
       text: cue.text,
-      currentTime: currentTimeMs / 1000
+      currentTime: currentTimeMs / 1000,
+      cueStartMs: cue.startMs,
+      cueEndMs: cue.endMs,
+      ...(cue.segments ? { segments: cue.segments } : {})
     };
   }
 

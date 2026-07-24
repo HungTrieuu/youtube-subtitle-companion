@@ -26,6 +26,9 @@ export type SubtitleUpdateMessage = BaseMessage & {
   videoId: string;
   text: string;
   currentTime: number;
+  cueStartMs?: number;
+  cueEndMs?: number;
+  segments?: SubtitleTimelineSegment[];
 };
 
 export type SubtitleClearMessage = BaseMessage & {
@@ -34,6 +37,13 @@ export type SubtitleClearMessage = BaseMessage & {
 };
 
 export type SubtitleTimelineCue = {
+  startMs: number;
+  endMs: number;
+  text: string;
+  segments?: SubtitleTimelineSegment[];
+};
+
+export type SubtitleTimelineSegment = {
   startMs: number;
   endMs: number;
   text: string;

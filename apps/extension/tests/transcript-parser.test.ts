@@ -15,7 +15,10 @@ describe("parseTranscriptEvents", () => {
           {
             tStartMs: 1000,
             dDurationMs: 1500,
-            segs: [{ utf8: " Hello " }, { utf8: "world" }]
+            segs: [
+              { utf8: " Hello ", tOffsetMs: 0 },
+              { utf8: "world", tOffsetMs: 700 }
+            ]
           },
           {
             tStartMs: 2600,
@@ -28,7 +31,19 @@ describe("parseTranscriptEvents", () => {
       {
         startMs: 1000,
         endMs: 2600,
-        text: "Hello world"
+        text: "Hello world",
+        segments: [
+          {
+            startMs: 1000,
+            endMs: 1700,
+            text: "Hello"
+          },
+          {
+            startMs: 1700,
+            endMs: 2600,
+            text: " world"
+          }
+        ]
       },
       {
         startMs: 2600,
@@ -57,7 +72,7 @@ describe("parseTranscriptEvents", () => {
       parseXmlTranscript(`
         <timedtext>
           <body>
-            <p t="1000" d="1400"><s> Hello </s><s>world</s></p>
+            <p t="1000" d="1400"><s t="0"> Hello </s><s t="700">world</s></p>
             <p t="2600" d="900">Again &amp; again</p>
           </body>
         </timedtext>
@@ -66,7 +81,19 @@ describe("parseTranscriptEvents", () => {
       {
         startMs: 1000,
         endMs: 2600,
-        text: "Hello world"
+        text: "Hello world",
+        segments: [
+          {
+            startMs: 1000,
+            endMs: 1700,
+            text: "Hello"
+          },
+          {
+            startMs: 1700,
+            endMs: 2600,
+            text: " world"
+          }
+        ]
       },
       {
         startMs: 2600,

@@ -30,7 +30,18 @@ export const subtitleUpdateSchema = baseMessageSchema.extend({
   type: z.literal("subtitle.update"),
   videoId: z.string().min(1),
   text: z.string().min(1),
-  currentTime: z.number().min(0)
+  currentTime: z.number().min(0),
+  cueStartMs: z.number().min(0).optional(),
+  cueEndMs: z.number().min(0).optional(),
+  segments: z.array(
+    z.object({
+      startMs: z.number().min(0),
+      endMs: z.number().min(0),
+      text: z.string().min(1)
+    })
+  )
+    .min(1)
+    .optional()
 });
 
 export const subtitleClearSchema = baseMessageSchema.extend({
@@ -38,10 +49,17 @@ export const subtitleClearSchema = baseMessageSchema.extend({
   videoId: z.string().min(1)
 });
 
-export const subtitleTimelineCueSchema = z.object({
+export const subtitleTimelineSegmentSchema = z.object({
   startMs: z.number().min(0),
   endMs: z.number().min(0),
   text: z.string().min(1)
+});
+
+export const subtitleTimelineCueSchema = z.object({
+  startMs: z.number().min(0),
+  endMs: z.number().min(0),
+  text: z.string().min(1),
+  segments: z.array(subtitleTimelineSegmentSchema).min(1).optional()
 });
 
 export const subtitleTimelineSchema = baseMessageSchema.extend({

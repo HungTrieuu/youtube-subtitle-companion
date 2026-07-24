@@ -286,13 +286,17 @@ const publishTranscriptTimeline = (videoId: string | null, body: string, source:
     return;
   }
 
-  const cues = parseTranscriptText(body) as SubtitleTimelineCue[];
+  const cues = parseTranscriptText(body);
 
   if (cues.length === 0) {
     return;
   }
 
-  const signature = `${videoId}:${cues.length}:${cues[0]?.startMs ?? 0}:${cues.at(-1)?.endMs ?? 0}`;
+  const segmentCount = cues.reduce(
+    (total, cue) => total + (cue.segments?.length ?? 0),
+    0
+  );
+  const signature = `${videoId}:${cues.length}:${segmentCount}:${cues[0]?.startMs ?? 0}:${cues.at(-1)?.endMs ?? 0}`;
 
   if (signature === lastSentTranscriptTimelineKey) {
     return;

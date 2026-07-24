@@ -1,4 +1,7 @@
-import type { SubtitleTimelineCue } from "@youtube-subtitle-companion/shared";
+import type {
+  SubtitleTimelineCue,
+  SubtitleTimelineSegment
+} from "@youtube-subtitle-companion/shared";
 
 import { extensionLogger } from "./logger";
 import type {
@@ -32,6 +35,7 @@ const XML_ENTITY_MAP: Record<string, string> = {
 };
 
 type TranscriptCue = SubtitleTimelineCue;
+type TranscriptSegment = SubtitleTimelineSegment;
 
 type TranscriptRequestResult = {
   url: string | null;
@@ -240,6 +244,138 @@ const normalizeTranscriptPayload = (value: string): string =>
     .replace(/^\)\]\}'\s*/, "")
     .trim();
 
+const normalizeTranscriptFragment = (value: string): string =>
+  value
+    .replace(/\s+/g, " ")
+    .trim();
+
+const shouldAttachFragmentToPrevious = (value: string): boolean =>
+  /^[,.;:!?%)\]}%]/.test(value);
+
+const shouldPreviousFragmentAbsorbSpace = (value: string): boolean =>
+  /[(\[{/"'`-]$/.test(value);
+
+const buildDisplayFragments = (fragments: string[]): string[] => {
+  const normalizedFragments = fragments
+    .map(normalizeTranscriptFragment)
+    .filter((fragment) => fragment.length > 0);
+  const displayFragments: string[] = [];
+
+  for (const fragment of normalizedFragments) {
+    const previousFragment = displayFragments[displayFragments.length - 1]?.trim() ?? "";
+    const needsLeadingSpace =
+      displayFragments.length > 0 &&
+      !shouldAttachFragmentToPrevious(fragment) &&
+      !shouldPreviousFragmentAbsorbSpace(previousFragment);
+
+    displayFragments.push(needsLeadingSpace ? ` ${fragment}` : fragment);
+  }
+
+  return displayFragments;
+};
+
+const buildCueTextFromFragments = (fragments: string[]): string | null => {
+  const displayFragments = buildDisplayFragments(fragments);
+  const text = displayFragments.join("").trim();
+  return text.length > 0 ? text : null;
+};
+
+const buildCueWithSegments = (
+  cueStartMs: number,
+  cueEndMs: number,
+  segments: Array<{ text: string; offsetMs: number | null }>
+): TranscriptCue | null => {
+  const usableSegments = segments.filter(
+    (segment) => normalizeTranscriptFragment(segment.text).length > 0
+  );
+
+  if (usableSegments.length === 0) {
+    return null;
+  }
+
+  const displayFragments = buildDisplayFragments(usableSegments.map((segment) => segment.text));
+  const cueText = displayFragments.join("").trim();
+
+  if (cueText.length === 0) {
+    return null;
+  }
+
+  if (usableSegments.length === 1) {
+    return {
+      startMs: cueStartMs,
+      endMs: cueEndMs,
+      text: cueText
+    };
+  }
+
+  const mergedSegments: TranscriptSegment[] = [];
+  let currentStartMs = cueStartMs;
+
+  for (let index = 0; index < usableSegments.length; index += 1) {
+    const segment = usableSegments[index]!;
+    const segmentStartMs =
+      index === 0
+        ? cueStartMs + Math.max(0, segment.offsetMs ?? 0)
+        : segment.offsetMs === null
+          ? currentStartMs
+          : cueStartMs + Math.max(0, segment.offsetMs);
+    const text = displayFragments[index] ?? normalizeTranscriptFragment(segment.text);
+
+    currentStartMs = Math.max(currentStartMs, segmentStartMs);
+
+    const previousSegment = mergedSegments[mergedSegments.length - 1];
+    if (previousSegment && previousSegment.startMs === currentStartMs) {
+      previousSegment.text += text;
+      continue;
+    }
+
+    mergedSegments.push({
+      startMs: currentStartMs,
+      endMs: cueEndMs,
+      text
+    });
+  }
+
+  for (let index = 0; index < mergedSegments.length - 1; index += 1) {
+    mergedSegments[index]!.endMs = Math.max(
+      mergedSegments[index]!.startMs,
+      mergedSegments[index + 1]!.startMs
+    );
+  }
+
+  const segmentsForCue =
+    mergedSegments.length > 1
+      ? mergedSegments.filter((segment) => segment.endMs >= segment.startMs)
+      : [];
+
+  return {
+    startMs: cueStartMs,
+    endMs: cueEndMs,
+    text: cueText,
+    ...(segmentsForCue.length > 1 ? { segments: segmentsForCue } : {})
+  };
+};
+
+const extendCueEnds = (cues: TranscriptCue[]): TranscriptCue[] => {
+  for (let index = 0; index < cues.length - 1; index += 1) {
+    const cue = cues[index];
+    const nextStart = cues[index + 1]?.startMs;
+
+    if (!cue || typeof nextStart !== "number") {
+      continue;
+    }
+
+    cue.endMs = Math.max(cue.endMs, nextStart);
+
+    const lastSegment = cue.segments?.[cue.segments.length - 1];
+    if (lastSegment) {
+      lastSegment.endMs = Math.max(lastSegment.endMs, cue.endMs);
+    }
+  }
+
+  return cues;
+};
+
 export const parseTranscriptEvents = (payload: unknown): TranscriptCue[] => {
   const events = getArray(payload, "events");
   const cues = events.flatMap((event): TranscriptCue[] => {
@@ -251,34 +387,22 @@ export const parseTranscriptEvents = (payload: unknown): TranscriptCue[] => {
       return [];
     }
 
-    const text = normalizeSubtitleText(
-      segments
-        .map((segment) => getString(segment, "utf8") ?? "")
-        .join("")
+    const cue = buildCueWithSegments(
+      startMs,
+      startMs + Math.max(durationMs, 250),
+      segments.map((segment) => ({
+        text: getString(segment, "utf8") ?? "",
+        offsetMs: getNumber(segment, "tOffsetMs")
+      }))
     );
 
-    if (text.length === 0) {
+    if (!cue) {
       return [];
     }
 
-    return [
-      {
-        startMs,
-        endMs: startMs + Math.max(durationMs, 250),
-        text
-      }
-    ];
+    return [cue];
   });
-
-  for (let index = 0; index < cues.length - 1; index += 1) {
-    const nextStart = cues[index + 1]?.startMs;
-
-    if (typeof nextStart === "number") {
-      cues[index]!.endMs = Math.max(cues[index]!.endMs, nextStart);
-    }
-  }
-
-  return cues;
+  return extendCueEnds(cues);
 };
 
 export const parseXmlTranscript = (payload: string): TranscriptCue[] => {
@@ -301,28 +425,50 @@ export const parseXmlTranscript = (payload: string): TranscriptCue[] => {
       continue;
     }
 
-    const text = normalizeSubtitleText(decodeXmlEntities(stripMarkup(body)));
+    const cueEndMs = startMs + Math.max(durationMs, 250);
+    const segmentPattern = /<s\b([^>]*)>([\s\S]*?)<\/s>/gi;
+    const timedSegments = Array.from(body.matchAll(segmentPattern), (segmentMatch) => {
+      const segmentAttributes = segmentMatch[1] ?? "";
+      const segmentBody = segmentMatch[2] ?? "";
+      const rawSegmentStartMs =
+        parseIntegerMs(segmentAttributes.match(/\bt="([^"]+)"/i)?.[1] ?? null) ??
+        parseSecondsToMs(segmentAttributes.match(/\bstart="([^"]+)"/i)?.[1] ?? null);
+      const segmentStartMs =
+        rawSegmentStartMs === null
+          ? null
+          : rawSegmentStartMs >= startMs && rawSegmentStartMs <= cueEndMs + 1000
+            ? rawSegmentStartMs - startMs
+            : rawSegmentStartMs;
 
-    if (text.length === 0) {
+      return {
+        text: decodeXmlEntities(stripMarkup(segmentBody)),
+        offsetMs: segmentStartMs
+      };
+    });
+    const cue =
+      buildCueWithSegments(startMs, cueEndMs, timedSegments) ??
+      (() => {
+        const text = buildCueTextFromFragments([decodeXmlEntities(stripMarkup(body))]);
+
+        if (!text) {
+          return null;
+        }
+
+        return {
+          startMs,
+          endMs: cueEndMs,
+          text
+        } satisfies TranscriptCue;
+      })();
+
+    if (!cue) {
       continue;
     }
 
-    cues.push({
-      startMs,
-      endMs: startMs + Math.max(durationMs, 250),
-      text
-    });
+    cues.push(cue);
   }
 
-  for (let index = 0; index < cues.length - 1; index += 1) {
-    const nextStart = cues[index + 1]?.startMs;
-
-    if (typeof nextStart === "number") {
-      cues[index]!.endMs = Math.max(cues[index]!.endMs, nextStart);
-    }
-  }
-
-  return cues;
+  return extendCueEnds(cues);
 };
 
 const parseVttTimestampMs = (value: string): number | null => {
@@ -379,9 +525,9 @@ export const parseVttTranscript = (payload: string): TranscriptCue[] => {
       continue;
     }
 
-    const text = normalizeSubtitleText(lines.slice(timingIndex + 1).join(" "));
+    const text = buildCueTextFromFragments(lines.slice(timingIndex + 1));
 
-    if (text.length === 0) {
+    if (!text) {
       continue;
     }
 
