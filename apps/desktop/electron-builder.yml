@@ -1,0 +1,19 @@
+appId: com.codex.youtubesubtitlecompanion
+productName: YouTube Subtitle Companion
+directories:
+  output: ../../dist/desktop
+files:
+  - dist/**
+  - package.json
+asar: true
+npmRebuild: false
+linux:
+  category: Utility
+  target:
+    - AppImage
+win:
+  target:
+    - nsis
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

@@ -1,0 +1,46 @@
+{
+  "name": "youtube-subtitle-companion",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Desktop overlay for YouTube subtitles using a local extension-to-Electron bridge.",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "node": ">=20.12.0",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "dev": "concurrently -k \"pnpm dev:extension\" \"pnpm dev:desktop\"",
+    "dev:desktop": "pnpm --filter @youtube-subtitle-companion/desktop dev",
+    "dev:extension": "pnpm --filter @youtube-subtitle-companion/extension dev",
+    "build": "pnpm run build:shared && pnpm run build:extension && pnpm run build:desktop",
+    "build:shared": "pnpm --filter @youtube-subtitle-companion/shared build",
+    "build:desktop": "pnpm --filter @youtube-subtitle-companion/desktop build",
+    "build:extension": "pnpm --filter @youtube-subtitle-companion/extension build",
+    "test": "vitest run",
+    "lint": "eslint . --max-warnings 0",
+    "format": "prettier --write .",
+    "typecheck": "pnpm run typecheck:shared && pnpm run typecheck:desktop && pnpm run typecheck:extension",
+    "typecheck:shared": "pnpm --filter @youtube-subtitle-companion/shared exec tsc -p tsconfig.json --noEmit",
+    "typecheck:desktop": "pnpm --filter @youtube-subtitle-companion/desktop exec tsc -p tsconfig.json --noEmit",
+    "typecheck:extension": "pnpm --filter @youtube-subtitle-companion/extension exec tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "@types/chrome": "^0.0.302",
+    "@types/node": "^22.10.2",
+    "concurrently": "^9.1.2",
+    "esbuild": "^0.24.2",
+    "eslint": "^9.18.0",
+    "eslint-config-prettier": "^10.0.1",
+    "globals": "^15.14.0",
+    "prettier": "^3.4.2",
+    "rimraf": "^6.0.1",
+    "tsup": "^8.3.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.20.0",
+    "vitest": "^2.1.8"
+  }
+}

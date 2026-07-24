@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
+    <title>YouTube Subtitle Companion</title>
+    <link
+      rel="stylesheet"
+      href="./overlay.css"
+    />
+  </head>
+  <body>
+    <main id="app">
+      <header id="overlay-toolbar">
+        <div id="drag-handle">Hold Ctrl+Alt+Y and drag overlay</div>
+        <button
+          id="close-overlay-button"
+          type="button"
+          aria-label="Close subtitle overlay"
+          title="Close subtitle overlay"
+        >
+          ×
+        </button>
+      </header>
+      <section
+        id="subtitle-card"
+        tabindex="0"
+        aria-live="polite"
+      >
+        <p id="subtitle-text">Waiting for YouTube subtitle feed...</p>
+        <div id="status-line">Waiting for extension</div>
+        <div id="debug-line"></div>
+      </section>
+    </main>
+    <script src="./overlay.js"></script>
+  </body>
+</html>
