@@ -5,6 +5,7 @@ import { logger } from "./logger";
 
 type HotkeyHandlers = {
   togglePlay: () => void;
+  toggleSystemMedia: () => void;
   seekBack: () => void;
   seekForward: () => void;
   toggleOverlay: () => void;
@@ -35,6 +36,11 @@ export const registerHotkeys = (config: AppConfig, handlers: HotkeyHandlers): vo
   globalShortcut.unregisterAll();
 
   registerShortcut(config.hotkeys.togglePlay, () => handlers.togglePlay(), "togglePlay");
+  registerShortcut(
+    config.hotkeys.toggleSystemMedia,
+    () => handlers.toggleSystemMedia(),
+    "toggleSystemMedia"
+  );
   registerShortcut(config.hotkeys.seekBack, () => handlers.seekBack(), "seekBack");
   registerShortcut(config.hotkeys.seekForward, () => handlers.seekForward(), "seekForward");
   registerShortcut(

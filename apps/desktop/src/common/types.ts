@@ -20,6 +20,7 @@ export type AppConfig = {
   autoStart: boolean;
   hotkeys: {
     togglePlay: string;
+    toggleSystemMedia: string;
     seekBack: string;
     seekForward: string;
     toggleOverlay: string;

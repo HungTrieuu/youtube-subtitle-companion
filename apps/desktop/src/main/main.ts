@@ -20,6 +20,7 @@ import { DEFAULT_CONFIG } from "./config";
 import { registerHotkeys } from "./hotkeys";
 import { logger } from "./logger";
 import { OverlayWindowController } from "./overlay-window";
+import { systemMediaController } from "./system-media";
 import { TrayController } from "./tray";
 import { LocalWebSocketServer } from "./websocket-server";
 
@@ -105,6 +106,12 @@ const refreshHotkeys = (): void => {
     togglePlay: () => {
       logger.debug("hotkeys", "Triggered togglePlay hotkey");
       void websocketServer.sendCommand(createToggleCommand());
+    },
+    toggleSystemMedia: () => {
+      runHotkeyAction("toggleSystemMedia", 250, () => {
+        logger.debug("hotkeys", "Triggered toggleSystemMedia hotkey");
+        void systemMediaController.togglePlayPause();
+      });
     },
     seekBack: () => {
       logger.debug("hotkeys", "Triggered seekBack hotkey");

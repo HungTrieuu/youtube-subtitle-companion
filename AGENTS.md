@@ -40,6 +40,7 @@
 ## Hotkeys
 - Default hotkeys:
   - `Ctrl+Alt+Space`: play/pause
+  - `Ctrl+Backtick`: play/pause the active Linux media session
   - `Ctrl+Alt+Left`: seek back
   - `Ctrl+Alt+Right`: seek forward
   - `Ctrl+Alt+S`: show/hide overlay
@@ -49,6 +50,10 @@
 - Hotkeys are registered in `apps/desktop/src/main/hotkeys.ts`.
 - `main.ts` uses cooldown guards to avoid auto-repeat loops on toggle actions.
 - Hotkeys should only be re-registered when the hotkey mapping changes. A fingerprint guard was added for this.
+- `Ctrl+Backtick` is implemented in `apps/desktop/src/main/system-media.ts`.
+  - preferred backend: `playerctl play-pause`
+  - fallback backend: MPRIS via `dbus-send`
+  - last-resort backend: `xdotool key XF86AudioPlay`
 
 ## Linux and Windowing
 - This project is materially more reliable on true `X11` than on `Wayland`.

@@ -129,6 +129,7 @@ pnpm build
 ## Hotkeys
 
 - `Ctrl+Alt+Space`: play or pause
+- `Ctrl+Backtick`: play or pause the active system media session
 - `Ctrl+Alt+Left`: seek back 5 seconds
 - `Ctrl+Alt+Right`: seek forward 5 seconds
 - `Ctrl+Alt+S`: show or hide overlay
@@ -198,6 +199,13 @@ This file stores:
 - Check desktop logs for `Failed to register ... hotkey`.
 - On Linux Wayland, global hotkeys may only work while the app is focused, depending on the compositor.
 - If Linux hotkeys are important, test again in a real `x11` session before changing code.
+
+### `Ctrl+Backtick` does not pause or resume other apps
+
+- This hotkey is implemented through Linux media-session backends, not by changing volume.
+- `playerctl` is the preferred backend when installed.
+- If `playerctl` is missing, the app falls back to MPRIS over `dbus-send`.
+- Browser tabs or players that do not expose an MPRIS media session cannot be controlled by this hotkey.
 
 ### The overlay is visible but cannot be clicked
 

@@ -17,6 +17,7 @@ describe("config default and fallback", () => {
 
     expect(config.fontSize).toBe(32);
     expect(config.hotkeys.togglePlay).toBe("Control+Shift+Space");
+    expect(config.hotkeys.toggleSystemMedia).toBe(DEFAULT_CONFIG.hotkeys.toggleSystemMedia);
     expect(config.hotkeys.seekBack).toBe(DEFAULT_CONFIG.hotkeys.seekBack);
     expect(config.hotkeys.moveOverlay).toBe(DEFAULT_CONFIG.hotkeys.moveOverlay);
     expect(config.hotkeys.temporaryDim).toBe(DEFAULT_CONFIG.hotkeys.temporaryDim);

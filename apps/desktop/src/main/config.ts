@@ -17,6 +17,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   autoStart: false,
   hotkeys: {
     togglePlay: "Control+Alt+Space",
+    toggleSystemMedia: "Control+`",
     seekBack: "Control+Alt+Left",
     seekForward: "Control+Alt+Right",
     toggleOverlay: "Control+Alt+S",
@@ -41,6 +42,7 @@ export const appConfigSchema = z.object({
   autoStart: z.boolean(),
   hotkeys: z.object({
     togglePlay: z.string().min(1),
+    toggleSystemMedia: z.string().min(1),
     seekBack: z.string().min(1),
     seekForward: z.string().min(1),
     toggleOverlay: z.string().min(1),
