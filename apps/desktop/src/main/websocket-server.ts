@@ -306,9 +306,24 @@ export class LocalWebSocketServer {
         return;
 
       case "subtitle.update":
-        if (record.subtitleTimeline !== null) {
+        if (
+          record.subtitleTimeline !== null &&
+          record.subtitleTimelineVideoId === message.videoId
+        ) {
           record.lastSubtitleAt = message.timestamp;
           return;
+        }
+
+        if (
+          record.subtitleTimeline !== null &&
+          record.subtitleTimelineVideoId !== message.videoId
+        ) {
+          logger.debug("ws", "Discarded stale subtitle timeline after direct subtitle update", {
+            connectionId: record.connectionId,
+            timelineVideoId: record.subtitleTimelineVideoId,
+            subtitleVideoId: message.videoId
+          });
+          this.clearTimeline(record);
         }
 
         if (record.subtitle === null) {

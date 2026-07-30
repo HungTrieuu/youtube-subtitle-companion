@@ -74,6 +74,51 @@ const deriveStateAt = (state: PlayerStateMessage, now = Date.now()): PlayerState
   };
 };
 
+const getUrlVideoId = (): string | null => {
+  if (location.pathname !== "/watch") {
+    return null;
+  }
+
+  return new URL(location.href).searchParams.get("v");
+};
+
+const getLiveState = (): PlayerStateMessage | null => playerController.getState();
+
+const getPreferredState = (): PlayerStateMessage | null => {
+  const liveState = getLiveState();
+
+  if (!latestState) {
+    return liveState;
+  }
+
+  if (!liveState) {
+    return latestState;
+  }
+
+  if (liveState.videoId !== latestState.videoId) {
+    return liveState;
+  }
+
+  if (liveState.currentTime <= latestState.currentTime - SEEK_BACKWARD_THRESHOLD_SECONDS) {
+    return liveState;
+  }
+
+  return latestState;
+};
+
+const getActiveVideoId = (): string | null =>
+  getUrlVideoId() ?? getLiveState()?.videoId ?? latestState?.videoId ?? null;
+
+const resetVideoScopedState = (videoId: string): void => {
+  latestSubtitle = null;
+  latestTranscriptTimeline = null;
+  lastSentTranscriptTimelineKey = null;
+  hasLoggedObservedTimedtext = false;
+  extensionLogger.debug("Reset subtitle pipeline state for video change", {
+    videoId
+  });
+};
+
 const mergePlayerState = (
   previous: PlayerStateMessage | null,
   incoming: PlayerStateMessage
@@ -214,6 +259,11 @@ window.addEventListener("yt-navigate-finish", () => {
 
 const playerController = new YouTubePlayerController((state) => {
   const mergedState = mergePlayerState(latestState, state);
+  const previousVideoId = latestState?.videoId ?? null;
+
+  if (previousVideoId && previousVideoId !== mergedState.videoId) {
+    resetVideoScopedState(mergedState.videoId);
+  }
 
   if (
     mergedState.videoId !== lastLoggedVideoId ||
@@ -239,7 +289,7 @@ const playerController = new YouTubePlayerController((state) => {
 });
 
 const getDerivedState = (): PlayerStateMessage | null => {
-  const state = latestState ?? playerController.getState();
+  const state = getPreferredState();
 
   if (!state) {
     return null;
@@ -283,6 +333,17 @@ const requestTranscriptFromPage = (
 
 const publishTranscriptTimeline = (videoId: string | null, body: string, source: string): void => {
   if (!videoId) {
+    return;
+  }
+
+  const activeVideoId = getActiveVideoId();
+
+  if (activeVideoId && activeVideoId !== videoId) {
+    extensionLogger.debug("Ignored transcript timeline for inactive video", {
+      activeVideoId,
+      videoId,
+      source
+    });
     return;
   }
 
