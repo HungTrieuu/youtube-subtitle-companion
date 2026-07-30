@@ -22,4 +22,16 @@ describe("config default and fallback", () => {
     expect(config.hotkeys.moveOverlay).toBe(DEFAULT_CONFIG.hotkeys.moveOverlay);
     expect(config.hotkeys.temporaryDim).toBe(DEFAULT_CONFIG.hotkeys.temporaryDim);
   });
+
+  it("migrates legacy seek hotkeys to the new defaults", () => {
+    const config = sanitizeConfig({
+      hotkeys: {
+        seekBack: "Control+Alt+Left",
+        seekForward: "Control+Alt+Right"
+      }
+    });
+
+    expect(config.hotkeys.seekBack).toBe("Control+Alt+Z");
+    expect(config.hotkeys.seekForward).toBe("Control+Alt+X");
+  });
 });

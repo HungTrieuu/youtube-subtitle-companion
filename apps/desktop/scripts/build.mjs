@@ -5,6 +5,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { build, context } from "esbuild";
 
+import { stopRunningDesktopApp } from "./stop-running-app.mjs";
+
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const projectDir = path.resolve(scriptDir, "..");
 const outDir = path.join(projectDir, "dist");
@@ -103,6 +105,7 @@ const isCliEntry = process.argv[1]
 
 if (isCliEntry) {
   const watch = process.argv.includes("--watch");
+  await stopRunningDesktopApp();
   const watcher = await buildDesktop({ watch });
 
   if (!watch) {

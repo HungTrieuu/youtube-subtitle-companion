@@ -20,6 +20,7 @@ import { DEFAULT_CONFIG } from "./config";
 import { registerHotkeys } from "./hotkeys";
 import { logger } from "./logger";
 import { OverlayWindowController } from "./overlay-window";
+import { removeDesktopProcessState, writeDesktopProcessState } from "./runtime-state";
 import { systemMediaController } from "./system-media";
 import { TrayController } from "./tray";
 import { LocalWebSocketServer } from "./websocket-server";
@@ -35,6 +36,7 @@ const hotkeyCooldowns = new Map<string, number>();
 const useWayland = process.env.YSC_FORCE_WAYLAND === "1";
 const forceX11 = process.platform === "linux" && !useWayland;
 const temporaryDimDurationMs = 2_000;
+const seekHotkeyStepSeconds = 10;
 
 if (process.platform === "linux") {
   if (forceX11) {
@@ -52,6 +54,17 @@ const clampFont = (fontSize: number): number => Math.min(64, Math.max(16, fontSi
 
 const getConfig = (): AppConfig => configStore.getConfig();
 const getHotkeyFingerprint = (config: AppConfig): string => JSON.stringify(config.hotkeys);
+
+const handleShutdownSignal = (signal: NodeJS.Signals): void => {
+  logger.debug("bootstrap", `Received ${signal}, shutting down desktop app`);
+  isQuitting = true;
+
+  if (overlayWindow) {
+    overlayWindow.setQuitting(true);
+  }
+
+  app.quit();
+};
 
 const runHotkeyAction = (key: string, cooldownMs: number, action: () => void): void => {
   const now = Date.now();
@@ -115,11 +128,11 @@ const refreshHotkeys = (): void => {
     },
     seekBack: () => {
       logger.debug("hotkeys", "Triggered seekBack hotkey");
-      void websocketServer.sendCommand(createSeekRelativeCommand(-5));
+      void websocketServer.sendCommand(createSeekRelativeCommand(-seekHotkeyStepSeconds));
     },
     seekForward: () => {
       logger.debug("hotkeys", "Triggered seekForward hotkey");
-      void websocketServer.sendCommand(createSeekRelativeCommand(5));
+      void websocketServer.sendCommand(createSeekRelativeCommand(seekHotkeyStepSeconds));
     },
     toggleOverlay: () => {
       runHotkeyAction("toggleOverlay", 250, () => {
@@ -414,6 +427,13 @@ const bootstrap = async (): Promise<void> => {
     return;
   }
 
+  process.once("SIGINT", () => {
+    handleShutdownSignal("SIGINT");
+  });
+  process.once("SIGTERM", () => {
+    handleShutdownSignal("SIGTERM");
+  });
+
   app.on("second-instance", () => {
     if (!overlayWindow) {
       return;
@@ -432,6 +452,8 @@ const bootstrap = async (): Promise<void> => {
     forceX11,
     useWayland
   });
+
+  await writeDesktopProcessState();
 
   configStore = new DesktopConfigStore();
   const initialConfig = createLaunchConfig();
@@ -474,15 +496,29 @@ const bootstrap = async (): Promise<void> => {
 
   app.on("before-quit", () => {
     isQuitting = true;
-    overlayWindow.setQuitting(true);
+    if (overlayWindow) {
+      overlayWindow.setQuitting(true);
+    }
+
     if (temporaryDimResetTimer !== null) {
       clearTimeout(temporaryDimResetTimer);
       temporaryDimResetTimer = null;
     }
+
     globalShortcut.unregisterAll();
-    trayController.destroy();
-    void websocketServer.stop().catch((error) => {
-      logger.error("ws", "Failed to stop WebSocket server cleanly", error);
+
+    if (trayController) {
+      trayController.destroy();
+    }
+
+    if (websocketServer) {
+      void websocketServer.stop().catch((error) => {
+        logger.error("ws", "Failed to stop WebSocket server cleanly", error);
+      });
+    }
+
+    void removeDesktopProcessState().catch((error) => {
+      logger.warn("bootstrap", "Failed to remove desktop runtime state", error);
     });
   });
 
@@ -495,5 +531,8 @@ const bootstrap = async (): Promise<void> => {
 
 void bootstrap().catch((error) => {
   logger.error("bootstrap", "Failed to start desktop app", error);
+  void removeDesktopProcessState().catch((cleanupError) => {
+    logger.warn("bootstrap", "Failed to remove desktop runtime state after bootstrap error", cleanupError);
+  });
   app.quit();
 });

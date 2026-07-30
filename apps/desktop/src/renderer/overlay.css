@@ -15,7 +15,7 @@ body {
   min-height: 100%;
   background: transparent;
   color: #fff;
-  font-family: "Segoe UI", "Noto Sans", sans-serif;
+  font-family: "Segoe UI Variable Display", "Segoe UI", "Noto Sans", sans-serif;
   overflow: hidden;
 }
 
@@ -99,17 +99,22 @@ body[data-interactive="true"] #drag-handle {
   -webkit-line-clamp: 3;
   overflow: hidden;
   font-size: var(--font-size);
+  font-weight: 700;
+  letter-spacing: 0.01em;
   line-height: 1.28;
   text-align: var(--subtitle-align);
   opacity: var(--subtitle-opacity);
   transition: opacity 140ms ease;
   color: #ffffff;
+  -webkit-text-stroke: 1.15px rgba(15, 23, 42, 0.82);
+  paint-order: stroke fill;
   text-shadow:
-    0 1px 0 rgba(15, 23, 42, 0.66),
-    1px 0 0 rgba(15, 23, 42, 0.56),
-    -1px 0 0 rgba(15, 23, 42, 0.56),
-    0 -1px 0 rgba(15, 23, 42, 0.48),
-    0 2px 6px rgba(15, 23, 42, 0.24);
+    0 1px 0 rgba(15, 23, 42, 0.8),
+    1px 0 0 rgba(15, 23, 42, 0.72),
+    -1px 0 0 rgba(15, 23, 42, 0.72),
+    0 -1px 0 rgba(15, 23, 42, 0.62),
+    0 0 8px rgba(15, 23, 42, 0.32),
+    0 3px 10px rgba(15, 23, 42, 0.28);
   user-select: none;
   word-break: break-word;
   white-space: pre-wrap;
@@ -130,6 +135,8 @@ body[data-subtitle-hovered="true"] #subtitle-text {
 .subtitle-segment-fill {
   display: block;
   white-space: pre;
+  -webkit-text-stroke: inherit;
+  paint-order: inherit;
 }
 
 .subtitle-segment-base {

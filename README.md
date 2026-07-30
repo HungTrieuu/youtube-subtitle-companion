@@ -82,6 +82,7 @@ Important dev note:
 
 - `pnpm dev:desktop` does not hot-restart Electron for every main-process change.
 - After changing `apps/desktop/src/main/*` or `apps/desktop/src/preload/*`, restart the desktop process manually.
+- Each fresh `pnpm dev:desktop` or desktop build now stops the previously running desktop app first, so a hidden tray instance does not block the next launch.
 
 ## Build
 
@@ -131,8 +132,8 @@ pnpm build
 
 - `Ctrl+Alt+Space`: play or pause
 - `Ctrl+Backtick`: play or pause the active system media session
-- `Ctrl+Alt+Left`: seek back 5 seconds
-- `Ctrl+Alt+Right`: seek forward 5 seconds
+- `Ctrl+Alt+Z`: seek back 10 seconds
+- `Ctrl+Alt+X`: seek forward 10 seconds
 - `Ctrl+Alt+S`: show or hide overlay
 - `Ctrl+Alt+I`: toggle interaction mode
 - `Ctrl+Alt+Y`: toggle move-overlay mode

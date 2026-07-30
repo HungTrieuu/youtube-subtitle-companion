@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { buildDesktop } from "./build.mjs";
+import { stopRunningDesktopApp } from "./stop-running-app.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const projectDir = path.resolve(scriptDir, "..");
@@ -14,6 +15,7 @@ if (process.platform === "linux" && process.env.ELECTRON_ENABLE_SANDBOX !== "1")
   electronArgs.push("--no-sandbox", "--disable-setuid-sandbox");
 }
 
+await stopRunningDesktopApp();
 const watcher = await buildDesktop({ watch: true });
 
 const child = spawn(electronBinary, electronArgs, {
