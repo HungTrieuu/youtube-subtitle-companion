@@ -1,10 +1,7 @@
 import type {
-  ElectronToExtensionMessage,
   ExtensionCapability,
   ExtensionHelloMessage,
-  ExtensionToElectronMessage,
   PlayerCommandMessage,
-  PlayerCommandName,
   PlayerCommandResultMessage
 } from "./schemas";
 
