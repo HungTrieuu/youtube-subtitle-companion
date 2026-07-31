@@ -6,6 +6,7 @@ import {
   ipcMain,
   type MenuItemConstructorOptions
 } from "electron";
+import path from "node:path";
 
 import {
   createSeekRelativeCommand,
@@ -13,14 +14,23 @@ import {
   parseElectronMessage
 } from "@youtube-subtitle-companion/shared";
 
-import { IPC_CHANNELS, type OverlayContextMenuRequest } from "../common/ipc";
-import type { AppConfig } from "../common/types";
+import { formatHotkeyLabel } from "../common/hotkey-label";
+import {
+  IPC_CHANNELS,
+  type OverlayContextMenuRequest,
+  type OverlayPopupMetrics
+} from "../common/ipc";
+import type { DeleteLearningItemRequest, SaveLearningItemRequest } from "../common/learning";
+import type { AppConfig, OverlayUiMode } from "../common/types";
 import { DesktopConfigStore } from "./config-store";
 import { DEFAULT_CONFIG } from "./config";
+import { DictionaryService } from "./dictionary";
 import { registerHotkeys } from "./hotkeys";
+import { LearningStore } from "./learning-store";
 import { logger } from "./logger";
 import { OverlayWindowController } from "./overlay-window";
 import { removeDesktopProcessState, writeDesktopProcessState } from "./runtime-state";
+import { SavedWordsWindowController } from "./saved-words-window";
 import { systemMediaController } from "./system-media";
 import { TrayController } from "./tray";
 import { LocalWebSocketServer } from "./websocket-server";
@@ -29,6 +39,9 @@ let overlayWindow: OverlayWindowController;
 let configStore: DesktopConfigStore;
 let trayController: TrayController;
 let websocketServer: LocalWebSocketServer;
+let dictionaryService: DictionaryService;
+let learningStore: LearningStore;
+let savedWordsWindow: SavedWordsWindowController | null = null;
 let isQuitting = false;
 let registeredHotkeysFingerprint: string | null = null;
 let temporaryDimResetTimer: ReturnType<typeof setTimeout> | null = null;
@@ -54,6 +67,37 @@ const clampFont = (fontSize: number): number => Math.min(64, Math.max(16, fontSi
 
 const getConfig = (): AppConfig => configStore.getConfig();
 const getHotkeyFingerprint = (config: AppConfig): string => JSON.stringify(config.hotkeys);
+const getOverlayMode = (): OverlayUiMode => overlayWindow.getUiState().mode;
+const isSaveLearningItemRequest = (value: unknown): value is SaveLearningItemRequest =>
+  Boolean(value) &&
+  typeof value === "object" &&
+  typeof (value as SaveLearningItemRequest).word === "string" &&
+  typeof (value as SaveLearningItemRequest).sentence === "string" &&
+  typeof (value as SaveLearningItemRequest).timestampMs === "number" &&
+  ((value as SaveLearningItemRequest).videoId === null ||
+    typeof (value as SaveLearningItemRequest).videoId === "string") &&
+  ((value as SaveLearningItemRequest).videoTitle === null ||
+    typeof (value as SaveLearningItemRequest).videoTitle === "string");
+const isDeleteLearningItemRequest = (value: unknown): value is DeleteLearningItemRequest =>
+  Boolean(value) &&
+  typeof value === "object" &&
+  typeof (value as DeleteLearningItemRequest).word === "string" &&
+  typeof (value as DeleteLearningItemRequest).sentence === "string" &&
+  typeof (value as DeleteLearningItemRequest).timestampMs === "number" &&
+  typeof (value as DeleteLearningItemRequest).savedAt === "string" &&
+  (value as DeleteLearningItemRequest).status === "new" &&
+  ((value as DeleteLearningItemRequest).videoId === null ||
+    typeof (value as DeleteLearningItemRequest).videoId === "string") &&
+  ((value as DeleteLearningItemRequest).videoTitle === null ||
+    typeof (value as DeleteLearningItemRequest).videoTitle === "string");
+const isOverlayPopupMetrics = (value: unknown): value is OverlayPopupMetrics =>
+  Boolean(value) &&
+  typeof value === "object" &&
+  typeof (value as OverlayPopupMetrics).visible === "boolean" &&
+  typeof (value as OverlayPopupMetrics).reservedTop === "number" &&
+  Number.isFinite((value as OverlayPopupMetrics).reservedTop) &&
+  typeof (value as OverlayPopupMetrics).reservedBottom === "number" &&
+  Number.isFinite((value as OverlayPopupMetrics).reservedBottom);
 
 const handleShutdownSignal = (signal: NodeJS.Signals): void => {
   logger.debug("bootstrap", `Received ${signal}, shutting down desktop app`);
@@ -143,9 +187,7 @@ const refreshHotkeys = (): void => {
     toggleInteraction: () => {
       runHotkeyAction("toggleInteraction", 250, () => {
         logger.debug("hotkeys", "Triggered toggleInteraction hotkey");
-        updateConfig({
-          clickThrough: !getConfig().clickThrough
-        });
+        setOverlayActive(getOverlayMode() !== "active");
       });
     },
     moveOverlay: () => {
@@ -185,12 +227,31 @@ const refreshHotkeys = (): void => {
 };
 
 const refreshTray = (): void => {
+  if (!trayController) {
+    return;
+  }
+
   trayController.update({
     overlayVisible: getConfig().overlayVisible,
-    clickThrough: getConfig().clickThrough,
+    overlayMode: getOverlayMode(),
+    activeOverlayHotkeyLabel: formatHotkeyLabel(getConfig().hotkeys.toggleInteraction),
+    moveOverlayHotkeyLabel: formatHotkeyLabel(getConfig().hotkeys.moveOverlay),
     autoStart: getConfig().autoStart,
     connected: websocketServer.getConnectionState().connected
   });
+};
+
+const setOverlayActive = (active: boolean): void => {
+  if (active && !getConfig().overlayVisible) {
+    setOverlayVisible(true);
+  }
+
+  if (!getConfig().overlayVisible) {
+    return;
+  }
+
+  overlayWindow.setOverlayActive(active);
+  refreshTray();
 };
 
 const setOverlayVisible = (visible: boolean): AppConfig => {
@@ -219,14 +280,34 @@ const updateConfig = (patch: Partial<AppConfig>): AppConfig => {
   const config = configStore.updateConfig(patch);
   overlayWindow.applyConfig(config);
   overlayWindow.sendConfig();
+  overlayWindow.sendUiState();
   setAutoStart(config.autoStart);
   refreshHotkeys();
   refreshTray();
   return config;
 };
 
+const notifyLearningItemsUpdated = (): void => {
+  savedWordsWindow?.notifyItemsUpdated();
+};
+
+const showSavedWordsWindow = async (): Promise<void> => {
+  if (savedWordsWindow === null) {
+    savedWordsWindow = new SavedWordsWindowController({
+      onClosed: () => {
+        savedWordsWindow = null;
+      }
+    });
+  }
+
+  await savedWordsWindow.show();
+};
+
 const showContextMenu = (window: BrowserWindow, request: OverlayContextMenuRequest): void => {
   const current = getConfig();
+  const overlayMode = getOverlayMode();
+  const activeOverlayHotkeyLabel = formatHotkeyLabel(current.hotkeys.toggleInteraction);
+  const moveOverlayHotkeyLabel = formatHotkeyLabel(current.hotkeys.moveOverlay);
   const opacityOptions = [1, 0.85, 0.7];
   const alignmentOptions: AppConfig["alignment"][] = ["left", "center", "right"];
 
@@ -238,23 +319,27 @@ const showContextMenu = (window: BrowserWindow, request: OverlayContextMenuReque
       }
     },
     {
-      label: "Interaction mode",
-      type: "radio",
-      checked: !current.clickThrough,
+      label: `Active overlay (${activeOverlayHotkeyLabel})`,
+      type: "checkbox",
+      checked: overlayMode === "active",
       click: () => {
-        updateConfig({
-          clickThrough: false
-        });
+        setOverlayActive(overlayMode !== "active");
       }
     },
     {
-      label: "Click-through mode",
-      type: "radio",
-      checked: current.clickThrough,
+      label:
+        overlayMode === "move"
+          ? `Move mode is active (${moveOverlayHotkeyLabel})`
+          : `Move overlay with ${moveOverlayHotkeyLabel}`,
+      enabled: false
+    },
+    {
+      type: "separator"
+    },
+    {
+      label: "Saved words",
       click: () => {
-        updateConfig({
-          clickThrough: true
-        });
+        void showSavedWordsWindow();
       }
     },
     {
@@ -317,7 +402,8 @@ const registerIpc = (): void => {
     subtitle: websocketServer.getActiveSubtitle(),
     playerState: websocketServer.getActivePlayerState(),
     config: overlayWindow.getRenderedConfig(),
-    connection: websocketServer.getConnectionState()
+    connection: websocketServer.getConnectionState(),
+    uiState: overlayWindow.getUiState()
   }));
 
   ipcMain.on(IPC_CHANNELS.sendPlayerCommand, (_event, payload: unknown) => {
@@ -335,10 +421,8 @@ const registerIpc = (): void => {
     setOverlayVisible(!getConfig().overlayVisible);
   });
 
-  ipcMain.on(IPC_CHANNELS.toggleInteraction, () => {
-    updateConfig({
-      clickThrough: !getConfig().clickThrough
-    });
+  ipcMain.on(IPC_CHANNELS.toggleOverlayActive, () => {
+    setOverlayActive(getOverlayMode() !== "active");
   });
 
   ipcMain.on(IPC_CHANNELS.adjustFont, (_event, delta: unknown) => {
@@ -373,6 +457,78 @@ const registerIpc = (): void => {
       y: request.y
     });
   });
+
+  ipcMain.on(IPC_CHANNELS.setPopupMetrics, (_event, payload: unknown) => {
+    if (!isOverlayPopupMetrics(payload)) {
+      return;
+    }
+
+    overlayWindow.setPopupReservedSpace(
+      payload.visible ? payload.reservedTop : 0,
+      payload.visible ? payload.reservedBottom : 0
+    );
+  });
+
+  ipcMain.handle(IPC_CHANNELS.lookupDictionary, (_event, payload: unknown) => {
+    if (typeof payload !== "string") {
+      return {
+        success: false,
+        code: "invalid_word" as const,
+        error: "The selected token is invalid."
+      };
+    }
+
+    return dictionaryService.lookup(payload);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.saveLearningItem, (_event, payload: unknown) => {
+    if (!isSaveLearningItemRequest(payload)) {
+      return {
+        success: false,
+        error: "The learning item payload is invalid."
+      };
+    }
+
+    return learningStore.save(payload).then((response) => {
+      if (response.success && !response.duplicate) {
+        notifyLearningItemsUpdated();
+      }
+
+      return response;
+    });
+  });
+
+  ipcMain.handle(IPC_CHANNELS.getLearningItems, async () => {
+    try {
+      return {
+        success: true,
+        items: await learningStore.listItems()
+      };
+    } catch (error) {
+      logger.error("learning", "Failed to list learning items", error);
+      return {
+        success: false,
+        error: "Không thể tải danh sách từ đã lưu."
+      };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.deleteLearningItem, (_event, payload: unknown) => {
+    if (!isDeleteLearningItemRequest(payload)) {
+      return {
+        success: false,
+        error: "The learning item payload is invalid."
+      };
+    }
+
+    return learningStore.delete(payload).then((response) => {
+      if (response.success && response.deleted) {
+        notifyLearningItemsUpdated();
+      }
+
+      return response;
+    });
+  });
 };
 
 const createTray = (): TrayController =>
@@ -384,10 +540,11 @@ const createTray = (): TrayController =>
       hideOverlay: () => {
         setOverlayVisible(false);
       },
-      setClickThrough: (enabled) => {
-        updateConfig({
-          clickThrough: enabled
-        });
+      setOverlayActive: (enabled) => {
+        setOverlayActive(enabled);
+      },
+      openSavedWords: () => {
+        void showSavedWordsWindow();
       },
       increaseFont: () => {
         updateConfig({
@@ -415,7 +572,9 @@ const createTray = (): TrayController =>
     },
     {
       overlayVisible: getConfig().overlayVisible,
-      clickThrough: getConfig().clickThrough,
+      overlayMode: getOverlayMode(),
+      activeOverlayHotkeyLabel: formatHotkeyLabel(getConfig().hotkeys.toggleInteraction),
+      moveOverlayHotkeyLabel: formatHotkeyLabel(getConfig().hotkeys.moveOverlay),
       autoStart: getConfig().autoStart,
       connected: false
     }
@@ -456,6 +615,8 @@ const bootstrap = async (): Promise<void> => {
   await writeDesktopProcessState();
 
   configStore = new DesktopConfigStore();
+  dictionaryService = new DictionaryService();
+  learningStore = new LearningStore(path.join(app.getPath("userData"), "learning-data"));
   const initialConfig = createLaunchConfig();
   configStore.setConfig(initialConfig);
 
@@ -463,6 +624,9 @@ const bootstrap = async (): Promise<void> => {
     initialConfig,
     onBoundsChanged: (bounds) => {
       configStore.updateConfig(bounds);
+    },
+    onUiStateChanged: () => {
+      refreshTray();
     }
   });
 
@@ -489,6 +653,7 @@ const bootstrap = async (): Promise<void> => {
   setAutoStart(initialConfig.autoStart);
 
   overlayWindow.sendConfig();
+  overlayWindow.sendUiState();
   overlayWindow.sendConnection(websocketServer.getConnectionState());
   overlayWindow.sendPlayerState(websocketServer.getActivePlayerState());
   overlayWindow.sendSubtitle(websocketServer.getActiveSubtitle());
@@ -509,6 +674,11 @@ const bootstrap = async (): Promise<void> => {
 
     if (trayController) {
       trayController.destroy();
+    }
+
+    if (savedWordsWindow) {
+      savedWordsWindow.destroy();
+      savedWordsWindow = null;
     }
 
     if (websocketServer) {

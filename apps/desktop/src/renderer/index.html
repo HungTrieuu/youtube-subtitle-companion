@@ -15,7 +15,7 @@
   <body>
     <main id="app">
       <header id="overlay-toolbar">
-        <div id="drag-handle">Hold Ctrl+Alt+Y and drag overlay</div>
+        <div id="drag-handle">Hold move hotkey and drag overlay</div>
         <button
           id="close-overlay-button"
           type="button"
@@ -34,6 +34,24 @@
         <div id="status-line">Waiting for extension</div>
         <div id="debug-line"></div>
       </section>
+      <aside
+        id="word-popup"
+        hidden
+        role="dialog"
+        aria-live="polite"
+        aria-label="Learning actions"
+      >
+        <div id="word-popup-word"></div>
+        <div id="word-popup-translation"></div>
+        <div id="word-popup-phonetic"></div>
+        <div id="word-popup-body"></div>
+        <div id="word-popup-actions"></div>
+      </aside>
+      <div
+        id="overlay-toast"
+        hidden
+        aria-live="polite"
+      ></div>
     </main>
     <script src="./overlay.js"></script>
   </body>

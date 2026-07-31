@@ -8,12 +8,13 @@ import type {
 } from "@youtube-subtitle-companion/shared";
 
 import { IPC_CHANNELS } from "../common/ipc";
-import type { AppConfig, OverlayConnectionState } from "../common/types";
+import type { AppConfig, OverlayConnectionState, OverlayUiState } from "../common/types";
 import { logger } from "./logger";
 
 type OverlayWindowOptions = {
   initialConfig: AppConfig;
   onBoundsChanged(bounds: Pick<AppConfig, "width" | "height" | "x" | "y">): void;
+  onUiStateChanged(uiState: OverlayUiState): void;
 };
 
 const HIDDEN_OVERLAY_SIZE = 1;
@@ -33,7 +34,10 @@ export class OverlayWindowController {
   private readonly window: BrowserWindow;
   private currentConfig: AppConfig;
   private isQuitting = false;
-  private moveOverlayModeActive = false;
+  private interactionMode: OverlayUiState["mode"] = "click_through";
+  private popupReservedTop = 0;
+  private popupReservedBottom = 0;
+  private suspendPersistBounds = false;
 
   public constructor(private readonly options: OverlayWindowOptions) {
     this.currentConfig = options.initialConfig;
@@ -81,16 +85,23 @@ export class OverlayWindowController {
     });
 
     this.window.on("blur", () => {
-      this.deactivateMoveOverlayMode();
+      if (this.interactionMode === "move") {
+        this.setInteractionMode("click_through", {
+          blurWindow: false,
+          logMessage: "Move overlay mode disabled"
+        });
+      }
     });
 
     this.window.webContents.on("before-input-event", (_event, input) => {
-      if (!this.moveOverlayModeActive || input.type !== "keyDown") {
+      if (this.interactionMode !== "move" || input.type !== "keyDown") {
         return;
       }
 
       if (input.key.toLowerCase() === "escape") {
-        this.deactivateMoveOverlayMode();
+        this.setInteractionMode("click_through", {
+          logMessage: "Move overlay mode disabled"
+        });
       }
     });
 
@@ -117,18 +128,28 @@ export class OverlayWindowController {
     this.currentConfig = config;
 
     if (!config.overlayVisible) {
-      this.moveOverlayModeActive = false;
+      this.interactionMode = "click_through";
+      this.popupReservedTop = 0;
+      this.popupReservedBottom = 0;
     }
 
     const bounds = this.window.getBounds();
+    const baseY = bounds.y + this.popupReservedTop;
     const nextBounds = {
       width: config.overlayVisible ? config.width : HIDDEN_OVERLAY_SIZE,
-      height: config.overlayVisible ? config.height : HIDDEN_OVERLAY_SIZE,
+      height:
+        config.overlayVisible
+          ? config.height + this.popupReservedTop + this.popupReservedBottom
+          : HIDDEN_OVERLAY_SIZE,
       x: config.x ?? bounds.x,
-      y: config.y ?? bounds.y
+      y: config.overlayVisible ? (config.y ?? baseY) - this.popupReservedTop : bounds.y
     };
 
+    this.suspendPersistBounds = true;
     this.window.setBounds(nextBounds);
+    setTimeout(() => {
+      this.suspendPersistBounds = false;
+    }, 0);
     this.applyWindowInteraction();
     this.window.showInactive();
 
@@ -150,16 +171,77 @@ export class OverlayWindowController {
       return;
     }
 
-    if (this.moveOverlayModeActive) {
-      this.deactivateMoveOverlayMode();
+    if (this.interactionMode === "move") {
+      this.setInteractionMode("click_through", {
+        logMessage: "Move overlay mode disabled"
+      });
       return;
     }
 
-    this.moveOverlayModeActive = true;
-    this.applyWindowInteraction();
-    this.sendConfig();
-    this.reveal(true);
-    logger.debug("overlay", "Move overlay mode enabled");
+    this.setInteractionMode("move", {
+      focusWindow: true,
+      logMessage: "Move overlay mode enabled"
+    });
+  }
+
+  public setOverlayActive(active: boolean): void {
+    if (!this.currentConfig.overlayVisible) {
+      return;
+    }
+
+    this.setInteractionMode(active ? "active" : "click_through", {
+      focusWindow: active,
+      logMessage: active ? "Active overlay enabled" : "Active overlay disabled"
+    });
+  }
+
+  public setPopupReservedSpace(topValue: number, bottomValue: number): void {
+    const nextReservedTop = Math.max(0, Math.min(480, Math.round(topValue)));
+    const nextReservedBottom = Math.max(0, Math.min(480, Math.round(bottomValue)));
+
+    if (
+      nextReservedTop === this.popupReservedTop &&
+      nextReservedBottom === this.popupReservedBottom
+    ) {
+      return;
+    }
+
+    const bounds = this.window.getBounds();
+    const baseY = bounds.y + this.popupReservedTop;
+    const display = screen.getDisplayMatching(bounds);
+    const workArea = display.workArea;
+
+    this.popupReservedTop = nextReservedTop;
+    this.popupReservedBottom = nextReservedBottom;
+
+    if (!this.currentConfig.overlayVisible) {
+      return;
+    }
+
+    let nextY = (this.currentConfig.y ?? baseY) - this.popupReservedTop;
+    let nextHeight =
+      this.currentConfig.height + this.popupReservedTop + this.popupReservedBottom;
+
+    if (nextY < workArea.y) {
+      const clampedOverflow = workArea.y - nextY;
+      nextY = workArea.y;
+      nextHeight = Math.max(this.currentConfig.height, nextHeight - clampedOverflow);
+      this.popupReservedTop = Math.max(
+        0,
+        nextHeight - this.currentConfig.height - this.popupReservedBottom
+      );
+    }
+
+    this.suspendPersistBounds = true;
+    this.window.setBounds({
+      width: this.currentConfig.width,
+      height: nextHeight,
+      x: this.currentConfig.x ?? bounds.x,
+      y: nextY
+    });
+    setTimeout(() => {
+      this.suspendPersistBounds = false;
+    }, 0);
   }
 
   public sendSubtitle(subtitle: SubtitleUpdateMessage | null): void {
@@ -178,60 +260,53 @@ export class OverlayWindowController {
     this.window.webContents.send(IPC_CHANNELS.configUpdated, this.getRenderedConfig());
   }
 
+  public sendUiState(): void {
+    this.options.onUiStateChanged(this.getUiState());
+    this.window.webContents.send(IPC_CHANNELS.uiStateUpdated, this.getUiState());
+  }
+
   public sendTemporaryDimState(active: boolean): void {
     this.window.webContents.send(IPC_CHANNELS.temporaryDimUpdated, active);
   }
 
   public getRenderedConfig(): AppConfig {
-    if (!this.moveOverlayModeActive) {
-      return this.currentConfig;
-    }
-
     return {
       ...this.currentConfig,
-      clickThrough: false
+      clickThrough: this.interactionMode === "click_through"
+    };
+  }
+
+  public getUiState(): OverlayUiState {
+    return {
+      mode: this.interactionMode
     };
   }
 
   private persistBounds(): void {
-    if (!this.currentConfig.overlayVisible) {
+    if (!this.currentConfig.overlayVisible || this.suspendPersistBounds) {
       return;
     }
 
     const bounds = this.window.getBounds();
     this.options.onBoundsChanged({
       width: bounds.width,
-      height: bounds.height,
+      height: Math.max(
+        80,
+        bounds.height - this.popupReservedTop - this.popupReservedBottom
+      ),
       x: bounds.x,
-      y: bounds.y
+      y: bounds.y + this.popupReservedTop
     });
   }
 
   private applyWindowInteraction(): void {
     const clickThrough =
-      !this.currentConfig.overlayVisible || !this.moveOverlayModeActive
-        ? this.currentConfig.overlayVisible
-          ? this.currentConfig.clickThrough
-          : true
-        : false;
+      !this.currentConfig.overlayVisible || this.interactionMode === "click_through";
 
     this.window.setIgnoreMouseEvents(clickThrough, {
       forward: true
     });
     this.window.setFocusable(this.currentConfig.overlayVisible && !clickThrough);
-  }
-
-  private deactivateMoveOverlayMode(): void {
-    if (!this.moveOverlayModeActive) {
-      return;
-    }
-
-    this.moveOverlayModeActive = false;
-    this.applyWindowInteraction();
-    this.sendConfig();
-    this.window.blur();
-    this.raiseToTop();
-    logger.debug("overlay", "Move overlay mode disabled");
   }
 
   private raiseToTop(): void {
@@ -251,7 +326,7 @@ export class OverlayWindowController {
       return;
     }
 
-    const restoreInteraction = !this.moveOverlayModeActive;
+    const restoreInteraction = this.interactionMode === "click_through";
 
     this.window.setIgnoreMouseEvents(false, {
       forward: true
@@ -271,11 +346,53 @@ export class OverlayWindowController {
     }
 
     setTimeout(() => {
-      if (this.window.isDestroyed() || !this.currentConfig.overlayVisible || this.moveOverlayModeActive) {
+      if (
+        this.window.isDestroyed() ||
+        !this.currentConfig.overlayVisible ||
+        this.interactionMode !== "click_through"
+      ) {
         return;
       }
 
       this.applyWindowInteraction();
     }, 75);
+  }
+
+  private setInteractionMode(
+    nextMode: OverlayUiState["mode"],
+    options: {
+      blurWindow?: boolean;
+      focusWindow?: boolean;
+      logMessage?: string;
+    } = {}
+  ): void {
+    const {
+      blurWindow = nextMode === "click_through",
+      focusWindow = false,
+      logMessage
+    } = options;
+
+    if (this.interactionMode === nextMode) {
+      if (focusWindow) {
+        this.reveal(true);
+      }
+      return;
+    }
+
+    this.interactionMode = nextMode;
+    this.applyWindowInteraction();
+    this.sendConfig();
+    this.sendUiState();
+
+    if (focusWindow) {
+      this.reveal(true);
+    } else if (blurWindow) {
+      this.window.blur();
+      this.raiseToTop();
+    }
+
+    if (logMessage) {
+      logger.debug("overlay", logMessage);
+    }
   }
 }

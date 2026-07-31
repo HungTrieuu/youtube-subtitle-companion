@@ -21,7 +21,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     seekBack: "Control+Alt+Z",
     seekForward: "Control+Alt+X",
     toggleOverlay: "Control+Alt+S",
-    toggleInteraction: "Control+Alt+I",
+    toggleInteraction: "Control+Alt+A",
     moveOverlay: "Control+Alt+Y",
     temporaryDim: "Control+Alt+D",
     increaseFont: "Control+Alt+Up",
@@ -60,7 +60,7 @@ const partialConfigSchema = appConfigSchema.partial().extend({
 
 const cloneDefaultConfig = (): AppConfig => structuredClone(DEFAULT_CONFIG);
 
-const migrateLegacySeekHotkeys = (config: AppConfig): AppConfig => {
+const migrateLegacyHotkeys = (config: AppConfig): AppConfig => {
   let nextHotkeys = config.hotkeys;
 
   if (nextHotkeys.seekBack === "Control+Alt+Left") {
@@ -74,6 +74,13 @@ const migrateLegacySeekHotkeys = (config: AppConfig): AppConfig => {
     nextHotkeys = {
       ...nextHotkeys,
       seekForward: DEFAULT_CONFIG.hotkeys.seekForward
+    };
+  }
+
+  if (nextHotkeys.toggleInteraction === "Control+Alt+I") {
+    nextHotkeys = {
+      ...nextHotkeys,
+      toggleInteraction: DEFAULT_CONFIG.hotkeys.toggleInteraction
     };
   }
 
@@ -107,5 +114,5 @@ export const sanitizeConfig = (input: unknown): AppConfig => {
     return cloneDefaultConfig();
   }
 
-  return migrateLegacySeekHotkeys(mergeConfig(cloneDefaultConfig(), parsed.data));
+  return migrateLegacyHotkeys(mergeConfig(cloneDefaultConfig(), parsed.data));
 };

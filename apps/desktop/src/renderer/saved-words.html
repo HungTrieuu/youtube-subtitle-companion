@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
+    <title>Saved Words</title>
+    <link
+      rel="stylesheet"
+      href="./saved-words.css"
+    />
+  </head>
+  <body>
+    <main id="app">
+      <header id="page-header">
+        <div>
+          <p id="page-kicker">YouTube Subtitle Companion</p>
+          <h1>Saved words</h1>
+          <p id="page-summary">Loading saved words...</p>
+        </div>
+        <button
+          id="refresh-button"
+          type="button"
+        >
+          Refresh
+        </button>
+      </header>
+
+      <section
+        id="error-banner"
+        hidden
+        role="alert"
+      ></section>
+
+      <section
+        id="empty-state"
+        hidden
+      >
+        <h2>No saved words yet</h2>
+        <p>Save words from the dictionary popup to review them here.</p>
+      </section>
+
+      <section id="groups"></section>
+    </main>
+    <script src="./saved-words.js"></script>
+  </body>
+</html>

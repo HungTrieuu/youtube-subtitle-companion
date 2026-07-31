@@ -2,7 +2,9 @@ import { Menu, Tray, nativeImage } from "electron";
 
 type TrayState = {
   overlayVisible: boolean;
-  clickThrough: boolean;
+  overlayMode: "click_through" | "active" | "move";
+  activeOverlayHotkeyLabel: string;
+  moveOverlayHotkeyLabel: string;
   autoStart: boolean;
   connected: boolean;
 };
@@ -10,7 +12,8 @@ type TrayState = {
 type TrayHandlers = {
   showOverlay(): void;
   hideOverlay(): void;
-  setClickThrough(enabled: boolean): void;
+  setOverlayActive(enabled: boolean): void;
+  openSavedWords(): void;
   increaseFont(): void;
   decreaseFont(): void;
   setAutoStart(enabled: boolean): void;
@@ -74,16 +77,24 @@ export class TrayController {
         type: "separator"
       },
       {
-        label: "Interaction mode",
-        type: "radio",
-        checked: !this.state.clickThrough,
-        click: () => this.handlers.setClickThrough(false)
+        label: `Active overlay (${this.state.activeOverlayHotkeyLabel})`,
+        type: "checkbox",
+        checked: this.state.overlayMode === "active",
+        click: () => this.handlers.setOverlayActive(this.state.overlayMode !== "active")
       },
       {
-        label: "Click-through mode",
-        type: "radio",
-        checked: this.state.clickThrough,
-        click: () => this.handlers.setClickThrough(true)
+        label:
+          this.state.overlayMode === "move"
+            ? `Move mode is active (${this.state.moveOverlayHotkeyLabel})`
+            : `Move overlay with ${this.state.moveOverlayHotkeyLabel}`,
+        enabled: false
+      },
+      {
+        type: "separator"
+      },
+      {
+        label: "Saved words",
+        click: () => this.handlers.openSavedWords()
       },
       {
         type: "separator"

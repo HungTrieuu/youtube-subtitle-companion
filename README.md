@@ -9,7 +9,7 @@ It uses a Chrome-compatible extension to read the active YouTube player and capt
 - Shows current YouTube subtitles in a transparent desktop overlay.
 - Keeps the overlay visible above other apps.
 - Lets the overlay send commands back to YouTube.
-- Supports play or pause, seek, show or hide overlay, interaction mode, and overlay move mode.
+- Supports play or pause, seek, show or hide overlay, active overlay for word learning, and overlay move mode.
 - Handles YouTube SPA navigation and reconnects automatically.
 - Uses transcript timeline fallback so subtitle updates can keep working better when the YouTube tab is backgrounded.
 - Uses segment-level transcript timing when YouTube exposes it, so the overlay can animate karaoke-style highlighting locally on the desktop side.
@@ -126,7 +126,8 @@ pnpm build
 4. Turn `CC` on.
 5. The subtitle overlay should appear near the lower center of the screen.
 6. Double-click subtitle text to seek back 10 seconds.
-7. Use interaction mode or move mode when you need to click or drag the overlay.
+7. Pause the video and press `Ctrl+Alt+A` when you want to click words on the subtitle overlay.
+8. Use move mode when you need to drag the overlay.
 
 ## Hotkeys
 
@@ -135,7 +136,7 @@ pnpm build
 - `Ctrl+Alt+Z`: seek back 10 seconds
 - `Ctrl+Alt+X`: seek forward 10 seconds
 - `Ctrl+Alt+S`: show or hide overlay
-- `Ctrl+Alt+I`: toggle interaction mode
+- `Ctrl+Alt+A`: toggle active overlay for word lookup and sentence saving
 - `Ctrl+Alt+Y`: toggle move-overlay mode
 - `Ctrl+Alt+D`: temporarily dim subtitle text for 2 seconds
 - `Ctrl+Alt+Up`: increase font size
@@ -145,6 +146,13 @@ Overlay UI:
 
 - `X` button on the overlay hides it
 - Use `Ctrl+Alt+S` or the tray menu to show it again
+
+Word learning flow:
+
+1. Pause the YouTube video.
+2. Press `Ctrl+Alt+A` to activate the overlay.
+3. Click a word in the current subtitle cue.
+4. Use `Xem nghĩa` to look up the word or `Lưu câu` to save the full subtitle sentence.
 
 ## Extension Loading
 
@@ -212,7 +220,7 @@ This file stores:
 ### The overlay is visible but cannot be clicked
 
 - It is probably in click-through mode.
-- Press `Ctrl+Alt+I` to switch to interaction mode.
+- Pause the video and press `Ctrl+Alt+A` to activate the overlay for word selection.
 - Press `Ctrl+Alt+Y` to enter move mode if you want to drag it.
 
 ### The overlay does not come back after hiding it
@@ -236,7 +244,7 @@ This file stores:
 11. Test play or pause hotkey.
 12. Test seek hotkeys.
 13. Test `Ctrl+Alt+S`.
-14. Test `Ctrl+Alt+I`.
+14. Test `Ctrl+Alt+A`.
 15. Test `Ctrl+Alt+Y`.
 16. Restart the desktop app.
 17. Confirm the extension reconnects.

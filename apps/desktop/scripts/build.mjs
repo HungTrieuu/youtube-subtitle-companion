@@ -11,7 +11,7 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const projectDir = path.resolve(scriptDir, "..");
 const outDir = path.join(projectDir, "dist");
 const rendererOutDir = path.join(outDir, "renderer");
-const staticRendererFiles = ["index.html", "overlay.css"];
+const staticRendererFiles = ["index.html", "overlay.css", "saved-words.html", "saved-words.css"];
 
 const sharedOptions = {
   bundle: true,
@@ -44,6 +44,14 @@ const buildConfigs = [
     ...sharedOptions,
     entryPoints: [path.join(projectDir, "src/renderer/overlay.ts")],
     outfile: path.join(outDir, "renderer/overlay.js"),
+    platform: "browser",
+    format: "iife",
+    target: "chrome120"
+  },
+  {
+    ...sharedOptions,
+    entryPoints: [path.join(projectDir, "src/renderer/saved-words.ts")],
+    outfile: path.join(outDir, "renderer/saved-words.js"),
     platform: "browser",
     format: "iife",
     target: "chrome120"

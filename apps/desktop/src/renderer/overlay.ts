@@ -4,8 +4,17 @@ import {
   type SubtitleUpdateMessage
 } from "@youtube-subtitle-companion/shared";
 
+import type { DictionaryResult, SaveLearningItemRequest } from "../common/learning";
+import { formatHotkeyLabel } from "../common/hotkey-label";
+import { normalizeLearningWord } from "../common/learning";
 import type { OverlayApi } from "../common/ipc";
-import type { AppConfig, OverlayConnectionState, OverlayInitialState } from "../common/types";
+import type {
+  AppConfig,
+  OverlayConnectionState,
+  OverlayInitialState,
+  OverlayUiState
+} from "../common/types";
+import { canSelectSubtitleWords, isPlayerPausedForOverlay } from "./interaction-state";
 
 declare global {
   interface Window {
@@ -13,12 +22,56 @@ declare global {
   }
 }
 
+type LookupStatus = "idle" | "loading" | "success" | "not_found" | "network" | "error";
+
+type PopupState =
+  | {
+      visible: false;
+    }
+  | {
+      visible: true;
+      word: string;
+      tokenId: string;
+      lookupStatus: LookupStatus;
+      result: DictionaryResult | null;
+      message: string | null;
+      saving: boolean;
+    };
+
+const MAX_MEANING_GROUPS = 3;
+const MAX_DEFINITIONS_PER_GROUP = 3;
+const TOAST_DURATION_MS = 2_600;
+const POPUP_MARGIN_PX = 12;
+const POPUP_GAP_PX = 10;
+const POPUP_PREFERRED_HEIGHT = 320;
+
 const subtitleElement = document.querySelector<HTMLParagraphElement>("#subtitle-text");
 const statusElement = document.querySelector<HTMLDivElement>("#status-line");
 const debugElement = document.querySelector<HTMLDivElement>("#debug-line");
+const dragHandleElement = document.querySelector<HTMLDivElement>("#drag-handle");
 const closeOverlayButton = document.querySelector<HTMLButtonElement>("#close-overlay-button");
+const wordPopupElement = document.querySelector<HTMLElement>("#word-popup");
+const wordPopupWordElement = document.querySelector<HTMLDivElement>("#word-popup-word");
+const wordPopupTranslationElement = document.querySelector<HTMLDivElement>("#word-popup-translation");
+const wordPopupPhoneticElement = document.querySelector<HTMLDivElement>("#word-popup-phonetic");
+const wordPopupBodyElement = document.querySelector<HTMLDivElement>("#word-popup-body");
+const wordPopupActionsElement = document.querySelector<HTMLDivElement>("#word-popup-actions");
+const toastElement = document.querySelector<HTMLDivElement>("#overlay-toast");
 
-if (!subtitleElement || !statusElement || !debugElement || !closeOverlayButton) {
+if (
+  !subtitleElement ||
+  !statusElement ||
+  !debugElement ||
+  !dragHandleElement ||
+  !closeOverlayButton ||
+  !wordPopupElement ||
+  !wordPopupWordElement ||
+  !wordPopupTranslationElement ||
+  !wordPopupPhoneticElement ||
+  !wordPopupBodyElement ||
+  !wordPopupActionsElement ||
+  !toastElement
+) {
   throw new Error("Overlay renderer root nodes are missing.");
 }
 
@@ -26,11 +79,19 @@ let currentConfig: AppConfig | null = null;
 let currentSubtitle: SubtitleUpdateMessage | null = null;
 let currentConnection: OverlayConnectionState | null = null;
 let currentPlayerState: OverlayInitialState["playerState"] = null;
+let currentUiState: OverlayUiState | null = null;
 let temporaryDimActive = false;
 let karaokeFrameId: number | null = null;
 let renderedSubtitleKey: string | null = null;
 let renderedKaraokeSegments: SubtitleTimelineSegment[] = [];
 let renderedKaraokeSpans: HTMLSpanElement[] = [];
+let renderedTokenSequence = 0;
+let selectedTokenId: string | null = null;
+let popupState: PopupState = {
+  visible: false
+};
+let toastTimerId: number | null = null;
+let lastPopupReservedTop = 0;
 
 const formatTime = (totalSeconds: number): string => {
   const safeSeconds = Math.max(0, Math.floor(totalSeconds));
@@ -43,6 +104,37 @@ const formatTime = (totalSeconds: number): string => {
   }
 
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
+};
+
+const clamp = (value: number, min: number, max: number): number =>
+  Math.min(max, Math.max(min, value));
+
+const setPopupReservedBottomPadding = (value: number) => {
+  document.documentElement.style.setProperty("--popup-reserved-bottom", `${Math.max(0, value)}px`);
+};
+
+const getActualPopupReserves = (): { top: number; bottom: number } => {
+  if (!currentConfig) {
+    return {
+      top: 0,
+      bottom: 0
+    };
+  }
+
+  const top = Math.max(0, Math.round(currentConfig.y ?? window.screenY) - Math.round(window.screenY));
+  const bottom = Math.max(
+    0,
+    Math.round(window.innerHeight - currentConfig.height - top)
+  );
+
+  return {
+    top,
+    bottom
+  };
+};
+
+const syncPopupReservePadding = () => {
+  setPopupReservedBottomPadding(getActualPopupReserves().bottom);
 };
 
 const formatAge = (timestamp: number | null): string => {
@@ -60,6 +152,21 @@ const shorten = (value: string | null, maxLength: number): string | null => {
   }
 
   return value.length > maxLength ? `${value.slice(0, maxLength - 1)}...` : value;
+};
+
+const isOverlayInteractive = (): boolean =>
+  currentUiState !== null && currentUiState.mode !== "click_through";
+
+const isPlayerPaused = (): boolean =>
+  isPlayerPausedForOverlay(currentPlayerState, currentConnection);
+
+const canSelectWords = (): boolean =>
+  canSelectSubtitleWords(currentUiState, currentPlayerState, currentConnection, currentSubtitle);
+
+const syncInteractionState = () => {
+  document.body.dataset.overlayMode = currentUiState?.mode ?? "click_through";
+  document.body.dataset.interactive = String(isOverlayInteractive());
+  document.body.dataset.wordSelectable = String(canSelectWords());
 };
 
 const syncDimState = () => {
@@ -182,16 +289,80 @@ const splitSegmentText = (value: string): { leading: string; core: string; trail
   };
 };
 
+const createTokenId = (): string => {
+  renderedTokenSequence += 1;
+  return `token-${renderedTokenSequence}`;
+};
+
+const appendTokenizedText = (
+  container: HTMLElement,
+  text: string,
+  interactive: boolean
+): void => {
+  const parts = text.match(/\s+|\S+/g) ?? [];
+
+  for (const part of parts) {
+    if (/^\s+$/.test(part)) {
+      container.append(document.createTextNode(part));
+      continue;
+    }
+
+    const word = normalizeLearningWord(part);
+    const token = document.createElement("span");
+    token.className = "subtitle-token";
+    token.textContent = part;
+    token.dataset.clickable = String(Boolean(word) && interactive);
+
+    if (word && interactive) {
+      const tokenId = createTokenId();
+      token.dataset.tokenId = tokenId;
+      token.dataset.normalizedWord = word;
+      token.dataset.selected = String(selectedTokenId === tokenId);
+    }
+
+    container.append(token);
+  }
+};
+
+const clearSelectedTokenStyle = () => {
+  document.querySelectorAll<HTMLElement>(".subtitle-token[data-selected=\"true\"]").forEach((token) => {
+    token.dataset.selected = "false";
+  });
+};
+
+const applySelectedTokenStyle = () => {
+  clearSelectedTokenStyle();
+
+  if (!selectedTokenId) {
+    return;
+  }
+
+  const token = subtitleElement.querySelector<HTMLElement>(
+    `.subtitle-token[data-token-id="${CSS.escape(selectedTokenId)}"]`
+  );
+
+  if (token) {
+    token.dataset.selected = "true";
+  }
+};
+
+const clearSelection = () => {
+  selectedTokenId = null;
+  applySelectedTokenStyle();
+};
+
 const rebuildSubtitleNodes = () => {
   const nextKey = getSubtitleRenderKey(currentSubtitle);
 
   if (nextKey === renderedSubtitleKey) {
+    applySelectedTokenStyle();
     return;
   }
 
   renderedSubtitleKey = nextKey;
   renderedKaraokeSegments = [];
   renderedKaraokeSpans = [];
+  renderedTokenSequence = 0;
   subtitleElement.replaceChildren();
 
   if (!currentSubtitle) {
@@ -202,7 +373,12 @@ const rebuildSubtitleNodes = () => {
   const karaokeSegments = getRenderableKaraokeSegments();
 
   if (karaokeSegments.length < 2) {
-    subtitleElement.textContent = currentSubtitle.text;
+    const fragment = document.createDocumentFragment();
+    const wrapper = document.createElement("span");
+    appendTokenizedText(wrapper, currentSubtitle.text, true);
+    fragment.append(wrapper);
+    subtitleElement.append(fragment);
+    applySelectedTokenStyle();
     return;
   }
 
@@ -222,12 +398,12 @@ const rebuildSubtitleNodes = () => {
 
     const base = document.createElement("span");
     base.className = "subtitle-segment-base";
-    base.textContent = parts.core;
+    appendTokenizedText(base, parts.core, true);
 
     const fill = document.createElement("span");
     fill.className = "subtitle-segment-fill";
     fill.setAttribute("aria-hidden", "true");
-    fill.textContent = parts.core;
+    appendTokenizedText(fill, parts.core, false);
 
     span.append(base, fill);
     fragment.append(span);
@@ -240,6 +416,7 @@ const rebuildSubtitleNodes = () => {
   }
 
   subtitleElement.append(fragment);
+  applySelectedTokenStyle();
 };
 
 const syncKaraokeState = (): boolean => {
@@ -306,15 +483,25 @@ const scheduleKaraokeLoop = () => {
   karaokeFrameId = window.requestAnimationFrame(tick);
 };
 
+const getModeLabel = (): string => {
+  switch (currentUiState?.mode) {
+    case "active":
+      return "Active overlay";
+    case "move":
+      return "Move overlay";
+    default:
+      return "Click-through";
+  }
+};
+
 const renderStatus = () => {
-  if (!currentConfig || !currentConnection) {
+  if (!currentConfig || !currentConnection || !currentUiState) {
     statusElement.textContent = "Waiting for overlay state";
     debugElement.textContent = "";
     return;
   }
 
-  const modeLabel = currentConfig.clickThrough ? "Click-through" : "Interactive";
-  const parts = [`${modeLabel} mode`];
+  const parts = [`${getModeLabel()} mode`];
 
   switch (currentConnection.status) {
     case "waiting_for_extension":
@@ -346,7 +533,9 @@ const renderStatus = () => {
           ? `Player: ${currentPlayerState.playing ? "playing" : "paused"} ${formatTime(currentPlayerState.currentTime)} / ${formatTime(currentPlayerState.duration)}`
           : null,
         `Last player update: ${formatAge(currentConnection.lastPlayerStateAt)}`,
-        "CC may be off, unavailable, or the caption DOM has not updated yet."
+        currentUiState.mode === "active"
+          ? "Pause the video to click a word once subtitles appear."
+          : "CC may be off, unavailable, or the caption DOM has not updated yet."
       ]
         .filter(Boolean)
         .join(" | ");
@@ -360,7 +549,11 @@ const renderStatus = () => {
           ? `Player: ${currentPlayerState.playing ? "playing" : "paused"} ${formatTime(currentPlayerState.currentTime)} / ${formatTime(currentPlayerState.duration)} @${currentPlayerState.playbackRate.toFixed(2)}x`
           : null,
         `Last subtitle: ${formatAge(currentConnection.lastSubtitleAt)}`,
-        `Clients: ${currentConnection.clientCount}`
+        currentUiState.mode === "active"
+          ? isPlayerPaused()
+            ? "Click a word to look it up or save the sentence."
+            : "Pause the video to select a word."
+          : `Clients: ${currentConnection.clientCount}`
       ]
         .filter(Boolean)
         .join(" | ");
@@ -372,9 +565,11 @@ const renderStatus = () => {
 
 const renderSubtitle = () => {
   rebuildSubtitleNodes();
+  applySelectedTokenStyle();
   syncKaraokeState();
   subtitleElement.dataset.empty = String(currentSubtitle === null);
   document.body.dataset.hasSubtitle = String(currentSubtitle !== null);
+  syncInteractionState();
   scheduleKaraokeLoop();
 };
 
@@ -382,6 +577,8 @@ const showBootstrapError = (message: string) => {
   statusElement.textContent = "Overlay bootstrap pending";
   debugElement.textContent = message;
   document.body.dataset.hasSubtitle = "false";
+  document.body.dataset.interactive = "false";
+  document.body.dataset.wordSelectable = "false";
 };
 
 const loadInitialState = async (): Promise<OverlayInitialState> => {
@@ -409,8 +606,414 @@ const applyConfig = (config: AppConfig) => {
   document.documentElement.style.setProperty("--subtitle-opacity", `${config.opacity}`);
   document.documentElement.style.setProperty("--subtitle-hover-opacity", `${hoverOpacity}`);
   document.documentElement.style.setProperty("--subtitle-align", config.alignment);
-  document.body.dataset.interactive = String(!config.clickThrough);
+  dragHandleElement.textContent = `Hold ${formatHotkeyLabel(config.hotkeys.moveOverlay)} and drag overlay`;
+  syncInteractionState();
   renderStatus();
+};
+
+const hideToast = () => {
+  toastElement.dataset.visible = "false";
+
+  window.setTimeout(() => {
+    if (toastElement.dataset.visible === "false") {
+      toastElement.hidden = true;
+      toastElement.textContent = "";
+    }
+  }, 160);
+};
+
+const showToast = (message: string) => {
+  if (toastTimerId !== null) {
+    window.clearTimeout(toastTimerId);
+  }
+
+  toastElement.textContent = message;
+  toastElement.hidden = false;
+  toastElement.dataset.visible = "false";
+
+  window.requestAnimationFrame(() => {
+    toastElement.dataset.visible = "true";
+  });
+
+  toastTimerId = window.setTimeout(() => {
+    toastTimerId = null;
+    hideToast();
+  }, TOAST_DURATION_MS);
+};
+
+const getSelectedTokenElement = (): HTMLElement | null => {
+  if (!selectedTokenId) {
+    return null;
+  }
+
+  return subtitleElement.querySelector<HTMLElement>(
+    `.subtitle-token[data-token-id="${CSS.escape(selectedTokenId)}"]`
+  );
+};
+
+const syncPopupWindowMetrics = () => {
+  if (!popupState.visible) {
+    if (lastPopupReservedTop !== 0) {
+      lastPopupReservedTop = 0;
+      window.overlayApi.setPopupMetrics({
+        visible: false,
+        reservedTop: 0,
+        reservedBottom: 0
+      });
+    }
+
+    return;
+  }
+
+  const tokenElement = getSelectedTokenElement();
+
+  if (!tokenElement) {
+    return;
+  }
+
+  const anchorRect = tokenElement.getBoundingClientRect();
+  const popupRect = wordPopupElement.getBoundingClientRect();
+  const baseAnchorTop = anchorRect.top - lastPopupReservedTop;
+  const neededReservedTop = Math.max(
+    0,
+    Math.ceil(popupRect.height + POPUP_GAP_PX + POPUP_MARGIN_PX - baseAnchorTop)
+  );
+
+  if (neededReservedTop === lastPopupReservedTop) {
+    return;
+  }
+
+  lastPopupReservedTop = neededReservedTop;
+  window.overlayApi.setPopupMetrics({
+    visible: true,
+    reservedTop: neededReservedTop,
+    reservedBottom: 0
+  });
+};
+
+const closeWordPopup = () => {
+  popupState = {
+    visible: false
+  };
+  wordPopupElement.hidden = true;
+  wordPopupBodyElement.replaceChildren();
+  wordPopupActionsElement.replaceChildren();
+  wordPopupTranslationElement.textContent = "";
+  wordPopupPhoneticElement.textContent = "";
+  syncPopupWindowMetrics();
+  clearSelection();
+};
+
+const ensurePopupCanStayOpen = (): boolean => {
+  if (!popupState.visible) {
+    return false;
+  }
+
+  if (!canSelectWords()) {
+    closeWordPopup();
+    return false;
+  }
+
+  if (!getSelectedTokenElement()) {
+    closeWordPopup();
+    return false;
+  }
+
+  return true;
+};
+
+const positionWordPopup = () => {
+  if (!popupState.visible) {
+    return;
+  }
+
+  const tokenElement = getSelectedTokenElement();
+  if (!tokenElement) {
+    closeWordPopup();
+    return;
+  }
+
+  const anchorRect = tokenElement.getBoundingClientRect();
+  const popupRect = wordPopupElement.getBoundingClientRect();
+  const popupHeight = Math.min(popupRect.height || POPUP_PREFERRED_HEIGHT, POPUP_PREFERRED_HEIGHT);
+  const maxLeft = Math.max(POPUP_MARGIN_PX, window.innerWidth - popupRect.width - POPUP_MARGIN_PX);
+  const preferredLeft = anchorRect.left + anchorRect.width / 2 - popupRect.width / 2;
+  const popupLeft = clamp(preferredLeft, POPUP_MARGIN_PX, maxLeft);
+  const maxTop = Math.max(POPUP_MARGIN_PX, window.innerHeight - popupHeight - POPUP_MARGIN_PX);
+  const belowTop = anchorRect.bottom + POPUP_GAP_PX;
+  const aboveTop = anchorRect.top - popupHeight - POPUP_GAP_PX;
+  const hasBelowSpace =
+    window.innerHeight - anchorRect.bottom - POPUP_MARGIN_PX - POPUP_GAP_PX >= popupHeight;
+  const hasAboveSpace =
+    anchorRect.top - POPUP_MARGIN_PX - POPUP_GAP_PX >= popupHeight;
+
+  let popupTop: number;
+
+  if (hasBelowSpace) {
+    popupTop = clamp(belowTop, POPUP_MARGIN_PX, maxTop);
+  } else if (hasAboveSpace) {
+    popupTop = clamp(aboveTop, POPUP_MARGIN_PX, maxTop);
+  } else if (window.innerHeight - anchorRect.bottom >= anchorRect.top) {
+    popupTop = clamp(belowTop, POPUP_MARGIN_PX, maxTop);
+  } else {
+    popupTop = clamp(aboveTop, POPUP_MARGIN_PX, maxTop);
+  }
+
+  wordPopupElement.style.left = `${Math.round(popupLeft)}px`;
+  wordPopupElement.style.top = `${Math.round(popupTop)}px`;
+};
+
+const createPopupButton = (
+  label: string,
+  onClick: () => void,
+  options: {
+    primary?: boolean;
+    disabled?: boolean;
+  } = {}
+): HTMLButtonElement => {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = `popup-action${options.primary ? " popup-action--primary" : ""}`;
+  button.disabled = Boolean(options.disabled);
+  button.textContent = label;
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    onClick();
+  });
+  return button;
+};
+
+const renderPopupMeaningList = (result: DictionaryResult): DocumentFragment => {
+  const fragment = document.createDocumentFragment();
+  const meanings = result.meanings.slice(0, MAX_MEANING_GROUPS);
+
+  for (const meaning of meanings) {
+    const block = document.createElement("section");
+    block.className = "popup-meaning";
+
+    if (meaning.partOfSpeech) {
+      const part = document.createElement("div");
+      part.className = "popup-part-of-speech";
+      part.textContent = meaning.partOfSpeech;
+      block.append(part);
+    }
+
+    const list = document.createElement("ol");
+    list.className = "popup-definition-list";
+
+    for (const definition of meaning.definitions.slice(0, MAX_DEFINITIONS_PER_GROUP)) {
+      const item = document.createElement("li");
+      item.textContent = definition;
+      list.append(item);
+    }
+
+    block.append(list);
+    fragment.append(block);
+  }
+
+  return fragment;
+};
+
+const renderPopup = () => {
+  if (!popupState.visible) {
+    wordPopupElement.hidden = true;
+    return;
+  }
+
+  if (!ensurePopupCanStayOpen()) {
+    return;
+  }
+
+  wordPopupElement.hidden = false;
+  wordPopupWordElement.textContent = popupState.word;
+  wordPopupTranslationElement.textContent =
+    popupState.lookupStatus === "success" ? popupState.result?.shortTranslation ?? "" : "";
+  wordPopupPhoneticElement.textContent =
+    popupState.lookupStatus === "success" ? popupState.result?.phonetic ?? "" : "";
+  wordPopupBodyElement.replaceChildren();
+  wordPopupActionsElement.replaceChildren();
+
+  if (popupState.lookupStatus === "loading" || popupState.lookupStatus === "idle") {
+    const status = document.createElement("div");
+    status.className = "popup-status";
+    status.textContent = "Đang tra nghĩa...";
+    wordPopupBodyElement.append(status);
+  } else if (popupState.lookupStatus === "success" && popupState.result) {
+    wordPopupBodyElement.append(renderPopupMeaningList(popupState.result));
+  } else if (popupState.lookupStatus !== "idle" && popupState.message) {
+    const status = document.createElement("div");
+    status.className = "popup-status";
+    status.textContent = popupState.message;
+    wordPopupBodyElement.append(status);
+  }
+
+  if (
+    popupState.lookupStatus === "idle" ||
+    popupState.lookupStatus === "loading" ||
+    popupState.lookupStatus === "success"
+  ) {
+    wordPopupActionsElement.append(
+      createPopupButton(popupState.saving ? "Đang lưu..." : "Lưu câu", () => {
+        void saveSelectedWord();
+      }, { primary: true, disabled: popupState.saving }),
+      createPopupButton("Đóng", () => {
+        closeWordPopup();
+      })
+    );
+  } else {
+    wordPopupActionsElement.append(
+      createPopupButton("Thử lại", () => {
+        void lookupSelectedWord();
+      }, { primary: true }),
+      createPopupButton(popupState.saving ? "Đang lưu..." : "Lưu câu", () => {
+        void saveSelectedWord();
+      }, { disabled: popupState.saving }),
+      createPopupButton("Đóng", () => {
+        closeWordPopup();
+      })
+    );
+  }
+
+  window.requestAnimationFrame(() => {
+    positionWordPopup();
+    syncPopupWindowMetrics();
+  });
+};
+
+const openWordPopup = (token: HTMLElement) => {
+  if (!canSelectWords()) {
+    return;
+  }
+
+  const tokenId = token.dataset.tokenId;
+  const word = token.dataset.normalizedWord;
+
+  if (!tokenId || !word) {
+    return;
+  }
+
+  selectedTokenId = tokenId;
+  popupState = {
+    visible: true,
+    word,
+    tokenId,
+    lookupStatus: "loading",
+    result: null,
+    message: null,
+    saving: false
+  };
+
+  applySelectedTokenStyle();
+  renderPopup();
+  void runDictionaryLookup(word, tokenId);
+};
+
+const updatePopupState = (
+  updater: (state: Extract<PopupState, { visible: true }>) => Extract<PopupState, { visible: true }>
+): void => {
+  if (!popupState.visible) {
+    return;
+  }
+
+  popupState = updater(popupState);
+  renderPopup();
+};
+
+const runDictionaryLookup = async (lookupWord: string, tokenId: string) => {
+  const response = await window.overlayApi.lookupDictionary(lookupWord);
+
+  if (!popupState.visible || popupState.tokenId !== tokenId || popupState.word !== lookupWord) {
+    return;
+  }
+
+  if (response.success) {
+    updatePopupState((state) => ({
+      ...state,
+      lookupStatus: "success",
+      result: response.result,
+      message: null
+    }));
+    return;
+  }
+
+  const status: LookupStatus =
+    response.code === "not_found"
+      ? "not_found"
+      : response.code === "timeout" || response.code === "network"
+        ? "network"
+        : "error";
+  const message =
+    response.code === "not_found"
+      ? "Không tìm thấy nghĩa cho từ này."
+      : response.code === "timeout" || response.code === "network"
+        ? "Không thể kết nối tới từ điển."
+        : "Tra từ thất bại.";
+
+  updatePopupState((state) => ({
+    ...state,
+    lookupStatus: status,
+    result: null,
+    message: message || response.error
+  }));
+};
+
+const lookupSelectedWord = async () => {
+  if (!popupState.visible || popupState.lookupStatus === "loading") {
+    return;
+  }
+
+  const lookupWord = popupState.word;
+  const tokenId = popupState.tokenId;
+
+  updatePopupState((state) => ({
+    ...state,
+    lookupStatus: "loading",
+    result: null,
+    message: null
+  }));
+  await runDictionaryLookup(lookupWord, tokenId);
+};
+
+const saveSelectedWord = async () => {
+  if (!popupState.visible || popupState.saving || !currentSubtitle) {
+    return;
+  }
+
+  const request: SaveLearningItemRequest = {
+    word: popupState.word,
+    sentence: currentSubtitle.text,
+    videoId: currentPlayerState?.videoId ?? currentConnection?.sourceVideoId ?? currentSubtitle.videoId,
+    videoTitle: currentPlayerState?.title ?? currentConnection?.sourceTitle ?? null,
+    timestampMs: Math.round(derivePlayerCurrentTime() * 1000)
+  };
+  const tokenId = popupState.tokenId;
+  const savedWord = popupState.word;
+
+  updatePopupState((state) => ({
+    ...state,
+    saving: true
+  }));
+
+  const response = await window.overlayApi.saveLearningItem(request);
+
+  if (popupState.visible && popupState.tokenId === tokenId) {
+    updatePopupState((state) => ({
+      ...state,
+      saving: false
+    }));
+  }
+
+  if (!response.success) {
+    showToast("Không thể lưu câu");
+    return;
+  }
+
+  if (response.duplicate) {
+    showToast("Từ này đã được lưu");
+    return;
+  }
+
+  showToast(`Đã lưu “${savedWord}”`);
 };
 
 const bootstrap = async () => {
@@ -418,28 +1021,62 @@ const bootstrap = async () => {
   currentSubtitle = initialState.subtitle;
   currentConnection = initialState.connection;
   currentPlayerState = initialState.playerState;
+  currentUiState = initialState.uiState;
   applyConfig(initialState.config);
+  syncPopupReservePadding();
   renderSubtitle();
   renderStatus();
+  renderPopup();
   syncDimState();
 
   window.overlayApi.onSubtitle((subtitle) => {
+    const previousKey = getSubtitleRenderKey(currentSubtitle);
+    const nextKey = getSubtitleRenderKey(subtitle);
     currentSubtitle = subtitle;
+
+    if (popupState.visible && previousKey !== nextKey) {
+      closeWordPopup();
+    }
+
     renderSubtitle();
     renderStatus();
   });
 
   window.overlayApi.onConfig((config) => {
     applyConfig(config);
+    syncPopupReservePadding();
   });
 
   window.overlayApi.onConnection((connection) => {
     currentConnection = connection;
+    syncInteractionState();
     renderStatus();
+  });
+
+  window.overlayApi.onUiState((uiState) => {
+    const previousMode = currentUiState?.mode;
+    currentUiState = uiState;
+
+    if (popupState.visible && previousMode === "active" && uiState.mode !== "active") {
+      closeWordPopup();
+    }
+
+    syncInteractionState();
+    syncPopupReservePadding();
+    renderStatus();
+    renderPopup();
   });
 
   window.overlayApi.onPlayerState((playerState) => {
     currentPlayerState = playerState;
+
+    if (popupState.visible && !canSelectWords()) {
+      closeWordPopup();
+    }
+
+    syncInteractionState();
+    syncKaraokeState();
+    scheduleKaraokeLoop();
     renderStatus();
   });
 
@@ -449,12 +1086,75 @@ const bootstrap = async () => {
   });
 };
 
-subtitleElement.addEventListener("dblclick", () => {
+subtitleElement.addEventListener("click", (event) => {
+  const target = event.target;
+
+  if (!(target instanceof Element)) {
+    return;
+  }
+
+  const token = target.closest(".subtitle-token[data-clickable=\"true\"]");
+
+  if (!(token instanceof HTMLElement) || !canSelectWords()) {
+    return;
+  }
+
+  event.stopPropagation();
+  openWordPopup(token);
+});
+
+subtitleElement.addEventListener("pointerdown", (event) => {
+  const target = event.target;
+
+  if (!(target instanceof Element)) {
+    return;
+  }
+
+  if (
+    target.closest(".subtitle-token[data-clickable=\"true\"]") instanceof HTMLElement &&
+    canSelectWords()
+  ) {
+    event.stopPropagation();
+  }
+});
+
+subtitleElement.addEventListener("dblclick", (event) => {
+  if (canSelectWords()) {
+    event.preventDefault();
+    return;
+  }
+
   window.overlayApi.sendPlayerCommand(createSeekRelativeCommand(-10));
 });
 
+document.addEventListener("click", (event) => {
+  if (!popupState.visible) {
+    return;
+  }
+
+  const target = event.target;
+  if (!(target instanceof Element)) {
+    return;
+  }
+
+  if (target.closest("#word-popup") || target.closest(".subtitle-token[data-clickable=\"true\"]")) {
+    return;
+  }
+
+  closeWordPopup();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || !popupState.visible) {
+    return;
+  }
+
+  event.preventDefault();
+  closeWordPopup();
+});
+
 document.addEventListener("contextmenu", (event) => {
-  if (currentConfig?.clickThrough) {
+  if (!isOverlayInteractive()) {
     return;
   }
 
@@ -463,6 +1163,15 @@ document.addEventListener("contextmenu", (event) => {
     x: event.x,
     y: event.y
   });
+});
+
+window.addEventListener("resize", () => {
+  syncPopupReservePadding();
+
+  if (popupState.visible) {
+    positionWordPopup();
+    syncPopupWindowMetrics();
+  }
 });
 
 closeOverlayButton.addEventListener("click", () => {

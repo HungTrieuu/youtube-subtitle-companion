@@ -6,6 +6,7 @@ export type OverlaySourceStatus =
   | "waiting_for_player"
   | "waiting_for_subtitle"
   | "receiving_subtitles";
+export type OverlayUiMode = "click_through" | "active" | "move";
 
 export type AppConfig = {
   overlayVisible: boolean;
@@ -54,4 +55,9 @@ export type OverlayInitialState = {
   playerState: PlayerStateMessage | null;
   config: AppConfig;
   connection: OverlayConnectionState;
+  uiState: OverlayUiState;
+};
+
+export type OverlayUiState = {
+  mode: OverlayUiMode;
 };
