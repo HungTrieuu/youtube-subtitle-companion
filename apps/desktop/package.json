@@ -5,10 +5,10 @@
   "main": "dist/main/main.js",
   "scripts": {
     "dev": "node ./scripts/dev.mjs",
-    "build:app": "node ./scripts/build.mjs",
-    "build": "pnpm run build:app && electron-builder --config electron-builder.yml",
-    "build:linux": "pnpm run build:app && electron-builder --config electron-builder.yml --linux AppImage",
-    "build:win": "pnpm run build:app && electron-builder --config electron-builder.yml --win nsis"
+    "build": "node ./scripts/build.mjs",
+    "package": "pnpm run build && electron-builder --config electron-builder.yml",
+    "package:linux": "pnpm run build && electron-builder --config electron-builder.yml --linux AppImage",
+    "package:win": "pnpm run build && electron-builder --config electron-builder.yml --win nsis"
   },
   "dependencies": {
     "@youtube-subtitle-companion/shared": "workspace:*",

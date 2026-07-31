@@ -66,6 +66,47 @@ export default tseslint.config(
         ...globals.serviceworker,
         chrome: "readonly"
       }
+    },
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: ["**/desktop/**"]
+        }
+      ]
+    }
+  },
+  {
+    files: ["apps/desktop/src/renderer/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: ["**/main/**"]
+        }
+      ]
+    }
+  },
+  {
+    files: ["apps/desktop/src/main/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: ["**/renderer/**"]
+        }
+      ]
+    }
+  },
+  {
+    files: ["packages/shared/src/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: ["apps/**"]
+        }
+      ]
     }
   },
   eslintConfigPrettier

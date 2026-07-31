@@ -128,6 +128,7 @@ export class OverlayWindowController {
 
   public applyConfig(config: AppConfig): void {
     this.currentConfig = config;
+    const previousMode = this.interactionMode;
 
     if (!config.overlayVisible) {
       this.interactionMode = "click_through";
@@ -157,6 +158,10 @@ export class OverlayWindowController {
 
     if (config.overlayVisible) {
       this.reveal(false);
+    }
+
+    if (previousMode !== this.interactionMode) {
+      this.notifyUiStateChanged();
     }
   }
 
@@ -263,7 +268,6 @@ export class OverlayWindowController {
   }
 
   public sendUiState(): void {
-    this.options.onUiStateChanged(this.getUiState());
     this.window.webContents.send(IPC_CHANNELS.uiStateUpdated, this.getUiState());
   }
 
@@ -383,8 +387,7 @@ export class OverlayWindowController {
 
     this.interactionMode = nextMode;
     this.applyWindowInteraction();
-    this.sendConfig();
-    this.sendUiState();
+    this.notifyUiStateChanged();
 
     if (focusWindow) {
       this.reveal(true);
@@ -396,5 +399,9 @@ export class OverlayWindowController {
     if (logMessage) {
       logger.debug("overlay", logMessage);
     }
+  }
+
+  private notifyUiStateChanged(): void {
+    this.options.onUiStateChanged(this.getUiState());
   }
 }

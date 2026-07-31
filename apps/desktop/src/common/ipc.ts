@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 import type {
   PlayerCommandMessage,
   PlayerStateMessage,
@@ -35,16 +37,19 @@ export const IPC_CHANNELS = {
   learningItemsUpdated: "overlay:learning-items-updated"
 } as const;
 
-export type OverlayContextMenuRequest = {
-  x: number;
-  y: number;
-};
+export const overlayContextMenuRequestSchema = z.object({
+  x: z.number().finite(),
+  y: z.number().finite()
+});
 
-export type OverlayPopupMetrics = {
-  visible: boolean;
-  reservedTop: number;
-  reservedBottom: number;
-};
+export const overlayPopupMetricsSchema = z.object({
+  visible: z.boolean(),
+  reservedTop: z.number().finite(),
+  reservedBottom: z.number().finite()
+});
+
+export type OverlayContextMenuRequest = z.infer<typeof overlayContextMenuRequestSchema>;
+export type OverlayPopupMetrics = z.infer<typeof overlayPopupMetricsSchema>;
 
 export type OverlayApi = {
   getInitialState(): Promise<OverlayInitialState>;

@@ -1,6 +1,7 @@
 import {
   clampTime,
   createHelloMessage,
+  createPlayerCommandResultMessage,
   type PlayerStateMessage,
   type SubtitleTimelineCue
 } from "@youtube-subtitle-companion/shared";
@@ -433,7 +434,34 @@ const websocketClient = new ExtensionWebSocketClient(websocketUrl, {
     extensionLogger.debug("Desktop app is currently disconnected");
   },
   onCommand: (message) => {
-    void playerController.applyCommand(message);
+    void playerController
+      .applyCommand(message)
+      .then((success) => {
+        if (!message.requestId) {
+          return;
+        }
+
+        websocketClient.send(
+          createPlayerCommandResultMessage(
+            message.requestId,
+            success,
+            success ? undefined : "Player command could not be applied."
+          )
+        );
+      })
+      .catch((error) => {
+        if (!message.requestId) {
+          return;
+        }
+
+        websocketClient.send(
+          createPlayerCommandResultMessage(
+            message.requestId,
+            false,
+            error instanceof Error ? error.message : String(error)
+          )
+        );
+      });
   }
 });
 

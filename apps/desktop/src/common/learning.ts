@@ -1,86 +1,102 @@
+import { z } from "zod";
+
 export interface DictionaryProvider {
   lookup(word: string): Promise<DictionaryResult>;
 }
 
-export interface DictionaryResult {
-  word: string;
-  shortTranslation?: string;
-  phonetic?: string;
-  meanings: Array<{
-    partOfSpeech?: string;
-    definitions: string[];
-  }>;
-  source?: string;
-}
+export const dictionaryMeaningSchema = z.object({
+  partOfSpeech: z.string().min(1).optional(),
+  definitions: z.array(z.string().min(1))
+});
 
-export type DictionaryLookupResponse =
-  | {
-      success: true;
-      result: DictionaryResult;
-    }
-  | {
-      success: false;
-      code: "invalid_word" | "not_found" | "timeout" | "network" | "lookup_error";
-      error: string;
-    };
+export const dictionaryResultSchema = z.object({
+  word: z.string().min(1),
+  shortTranslation: z.string().min(1).optional(),
+  phonetic: z.string().min(1).optional(),
+  meanings: z.array(dictionaryMeaningSchema),
+  source: z.string().min(1).optional()
+});
 
-export interface LearningItem {
-  word: string;
-  sentence: string;
-  videoId: string | null;
-  videoTitle: string | null;
-  timestampMs: number;
-  savedAt: string;
-  status: "new";
-}
+export const dictionaryLookupCodeSchema = z.enum([
+  "invalid_word",
+  "not_found",
+  "timeout",
+  "network",
+  "lookup_error"
+]);
 
-export interface SaveLearningItemRequest {
-  word: string;
-  sentence: string;
-  videoId: string | null;
-  videoTitle: string | null;
-  timestampMs: number;
-}
+export const dictionaryLookupRequestSchema = z.string().trim().min(1);
 
-export interface DeleteLearningItemRequest {
-  word: string;
-  sentence: string;
-  videoId: string | null;
-  videoTitle: string | null;
-  timestampMs: number;
-  savedAt: string;
-  status: "new";
-}
+export const dictionaryLookupResponseSchema = z.discriminatedUnion("success", [
+  z.object({
+    success: z.literal(true),
+    result: dictionaryResultSchema
+  }),
+  z.object({
+    success: z.literal(false),
+    code: dictionaryLookupCodeSchema,
+    error: z.string().min(1)
+  })
+]);
 
-export type SaveLearningItemResponse =
-  | {
-      success: true;
-      duplicate: boolean;
-    }
-  | {
-      success: false;
-      error: string;
-    };
+export const learningItemSchema = z.object({
+  word: z.string().min(1),
+  sentence: z.string().min(1),
+  videoId: z.string().min(1).nullable(),
+  videoTitle: z.string().min(1).nullable(),
+  timestampMs: z.number().finite().min(0),
+  savedAt: z.string().min(1),
+  status: z.literal("new")
+});
 
-export type LearningItemsResponse =
-  | {
-      success: true;
-      items: LearningItem[];
-    }
-  | {
-      success: false;
-      error: string;
-    };
+export const saveLearningItemRequestSchema = learningItemSchema.omit({
+  savedAt: true,
+  status: true
+});
 
-export type DeleteLearningItemResponse =
-  | {
-      success: true;
-      deleted: boolean;
-    }
-  | {
-      success: false;
-      error: string;
-    };
+export const deleteLearningItemRequestSchema = learningItemSchema;
+
+export const saveLearningItemResponseSchema = z.discriminatedUnion("success", [
+  z.object({
+    success: z.literal(true),
+    duplicate: z.boolean()
+  }),
+  z.object({
+    success: z.literal(false),
+    error: z.string().min(1)
+  })
+]);
+
+export const learningItemsResponseSchema = z.discriminatedUnion("success", [
+  z.object({
+    success: z.literal(true),
+    items: z.array(learningItemSchema)
+  }),
+  z.object({
+    success: z.literal(false),
+    error: z.string().min(1)
+  })
+]);
+
+export const deleteLearningItemResponseSchema = z.discriminatedUnion("success", [
+  z.object({
+    success: z.literal(true),
+    deleted: z.boolean()
+  }),
+  z.object({
+    success: z.literal(false),
+    error: z.string().min(1)
+  })
+]);
+
+export type DictionaryResult = z.infer<typeof dictionaryResultSchema>;
+export type DictionaryLookupResponse = z.infer<typeof dictionaryLookupResponseSchema>;
+export type LearningItem = z.infer<typeof learningItemSchema>;
+export type SaveLearningItemRequest = z.infer<typeof saveLearningItemRequestSchema>;
+export type DeleteLearningItemRequest = z.infer<typeof deleteLearningItemRequestSchema>;
+export type SaveLearningItemResponse = z.infer<typeof saveLearningItemResponseSchema>;
+export type LearningItemsResponse = z.infer<typeof learningItemsResponseSchema>;
+export type DeleteLearningItemResponse = z.infer<typeof deleteLearningItemResponseSchema>;
 
 const VALID_LEARNING_WORD = /^[a-z0-9]+(?:['-][a-z0-9]+)*$/i;
 

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DEFAULT_EXTENSION_CAPABILITIES,
+  createHelloMessage,
+  createPlayerCommandResultMessage,
   createSeekRelativeCommand,
   parseElectronMessage,
   parseExtensionMessage
@@ -66,10 +69,11 @@ describe("message schema validation", () => {
   });
 
   it("accepts valid command payloads", () => {
-    const message = parseElectronMessage(createSeekRelativeCommand(-10));
+    const message = parseElectronMessage(createSeekRelativeCommand(-10, "req-1"));
 
     expect(message).not.toBeNull();
     expect(message?.command).toBe("seek_relative");
+    expect(message?.requestId).toBe("req-1");
   });
 
   it("rejects invalid command payloads", () => {
@@ -81,5 +85,54 @@ describe("message schema validation", () => {
     });
 
     expect(message).toBeNull();
+  });
+
+  it("keeps hello backward compatible when capabilities are omitted", () => {
+    const message = parseExtensionMessage({
+      type: "extension.hello",
+      timestamp: 1,
+      clientId: "client-1",
+      version: "0.1.0"
+    });
+
+    expect(message).toEqual({
+      type: "extension.hello",
+      timestamp: 1,
+      clientId: "client-1",
+      version: "0.1.0"
+    });
+  });
+
+  it("accepts hello payloads with known capabilities", () => {
+    const message = parseExtensionMessage(createHelloMessage("client-1"));
+
+    expect(message?.type).toBe("extension.hello");
+    expect(message?.capabilities).toEqual(DEFAULT_EXTENSION_CAPABILITIES);
+  });
+
+  it("rejects hello payloads with unknown capabilities", () => {
+    const message = parseExtensionMessage({
+      type: "extension.hello",
+      timestamp: 1,
+      clientId: "client-1",
+      version: "0.1.0",
+      capabilities: ["totally-unknown"]
+    });
+
+    expect(message).toBeNull();
+  });
+
+  it("accepts player command result payloads", () => {
+    const message = parseExtensionMessage(
+      createPlayerCommandResultMessage("req-1", false, "video not ready")
+    );
+
+    expect(message).toEqual({
+      type: "player.command_result",
+      timestamp: expect.any(Number),
+      requestId: "req-1",
+      success: false,
+      error: "video not ready"
+    });
   });
 });

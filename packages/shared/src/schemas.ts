@@ -1,9 +1,14 @@
 import { z } from "zod";
 
-import type {
-  ElectronToExtensionMessage,
-  ExtensionToElectronMessage
-} from "./protocol";
+export const EXTENSION_CAPABILITIES = [
+  "subtitle.current",
+  "subtitle.timeline",
+  "player.toggle",
+  "player.seek",
+  "player.rate",
+  "video.metadata",
+  "player.command-ack"
+] as const;
 
 const baseMessageSchema = z.object({
   type: z.string(),
@@ -13,7 +18,8 @@ const baseMessageSchema = z.object({
 export const extensionHelloSchema = baseMessageSchema.extend({
   type: z.literal("extension.hello"),
   clientId: z.string().min(1),
-  version: z.string().min(1)
+  version: z.string().min(1),
+  capabilities: z.array(z.enum(EXTENSION_CAPABILITIES)).optional()
 });
 
 export const playerStateSchema = baseMessageSchema.extend({
@@ -68,45 +74,66 @@ export const subtitleTimelineSchema = baseMessageSchema.extend({
   cues: z.array(subtitleTimelineCueSchema).min(1)
 });
 
+export const playerCommandResultSchema = baseMessageSchema.extend({
+  type: z.literal("player.command_result"),
+  requestId: z.string().min(1),
+  success: z.boolean(),
+  error: z.string().min(1).optional()
+});
+
 export const extensionToElectronSchema = z.discriminatedUnion("type", [
   extensionHelloSchema,
   playerStateSchema,
   subtitleUpdateSchema,
   subtitleClearSchema,
-  subtitleTimelineSchema
+  subtitleTimelineSchema,
+  playerCommandResultSchema
 ]);
 
+const playerCommandBaseSchema = baseMessageSchema.extend({
+  type: z.literal("player.command"),
+  requestId: z.string().min(1).optional()
+});
+
 export const playerCommandSchema = z.discriminatedUnion("command", [
-  baseMessageSchema.extend({
-    type: z.literal("player.command"),
+  playerCommandBaseSchema.extend({
     command: z.literal("play")
   }),
-  baseMessageSchema.extend({
-    type: z.literal("player.command"),
+  playerCommandBaseSchema.extend({
     command: z.literal("pause")
   }),
-  baseMessageSchema.extend({
-    type: z.literal("player.command"),
+  playerCommandBaseSchema.extend({
     command: z.literal("toggle")
   }),
-  baseMessageSchema.extend({
-    type: z.literal("player.command"),
+  playerCommandBaseSchema.extend({
     command: z.literal("seek_relative"),
     seconds: z.number().finite()
   }),
-  baseMessageSchema.extend({
-    type: z.literal("player.command"),
+  playerCommandBaseSchema.extend({
     command: z.literal("seek_absolute"),
     seconds: z.number().finite()
   }),
-  baseMessageSchema.extend({
-    type: z.literal("player.command"),
+  playerCommandBaseSchema.extend({
     command: z.literal("set_playback_rate"),
     rate: z.number().positive().finite()
   })
 ]);
 
 export const electronToExtensionSchema = playerCommandSchema;
+
+export type ExtensionCapability = (typeof EXTENSION_CAPABILITIES)[number];
+export type ExtensionHelloMessage = z.infer<typeof extensionHelloSchema>;
+export type PlayerStateMessage = z.infer<typeof playerStateSchema>;
+export type SubtitleUpdateMessage = z.infer<typeof subtitleUpdateSchema>;
+export type SubtitleClearMessage = z.infer<typeof subtitleClearSchema>;
+export type SubtitleTimelineSegment = z.infer<typeof subtitleTimelineSegmentSchema>;
+export type SubtitleTimelineCue = z.infer<typeof subtitleTimelineCueSchema>;
+export type SubtitleTimelineMessage = z.infer<typeof subtitleTimelineSchema>;
+export type PlayerCommandResultMessage = z.infer<typeof playerCommandResultSchema>;
+export type ExtensionToElectronMessage = z.infer<typeof extensionToElectronSchema>;
+export type PlayerCommandMessage = z.infer<typeof playerCommandSchema>;
+export type ElectronToExtensionMessage = z.infer<typeof electronToExtensionSchema>;
+export type PlayerCommandName = PlayerCommandMessage["command"];
 
 export const parseExtensionMessage = (
   input: unknown
