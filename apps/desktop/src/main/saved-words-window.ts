@@ -2,6 +2,7 @@ import { BrowserWindow } from "electron";
 import path from "node:path";
 
 import { IPC_CHANNELS } from "../common/ipc";
+import { getAppIconPath } from "./app-icon";
 
 type SavedWordsWindowOptions = {
   onClosed(): void;
@@ -18,6 +19,7 @@ export class SavedWordsWindowController {
       height: 720,
       minWidth: 720,
       minHeight: 520,
+      icon: getAppIconPath(),
       show: false,
       autoHideMenuBar: true,
       title: "Saved Words",

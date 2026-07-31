@@ -5,10 +5,16 @@ directories:
 files:
   - dist/**
   - package.json
+extraResources:
+  - from: ../../icon.png
+    to: assets/icon.png
+  - from: assets/icon.svg
+    to: assets/icon.svg
 asar: true
 npmRebuild: false
 linux:
   category: Utility
+  icon: ../../icon.png
   target:
     - AppImage
 win:

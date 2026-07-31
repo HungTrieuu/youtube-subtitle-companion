@@ -9,6 +9,7 @@ import type {
 
 import { IPC_CHANNELS } from "../common/ipc";
 import type { AppConfig, OverlayConnectionState, OverlayUiState } from "../common/types";
+import { getAppIconPath } from "./app-icon";
 import { logger } from "./logger";
 
 type OverlayWindowOptions = {
@@ -46,6 +47,7 @@ export class OverlayWindowController {
 
     this.window = new BrowserWindow({
       ...bounds,
+      icon: getAppIconPath(),
       frame: false,
       transparent: true,
       alwaysOnTop: true,

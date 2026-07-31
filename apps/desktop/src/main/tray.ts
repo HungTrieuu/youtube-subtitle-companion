@@ -1,4 +1,6 @@
-import { Menu, Tray, nativeImage } from "electron";
+import { Menu, Tray } from "electron";
+
+import { getTrayIconPath } from "./app-icon";
 
 type TrayState = {
   overlayVisible: boolean;
@@ -21,17 +23,7 @@ type TrayHandlers = {
   quit(): void;
 };
 
-const createTrayIcon = () => {
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
-      <rect width="16" height="16" rx="4" fill="#0f172a" />
-      <path d="M3 5.5a2.5 2.5 0 0 1 2.5-2.5h5A2.5 2.5 0 0 1 13 5.5v5A2.5 2.5 0 0 1 10.5 13h-5A2.5 2.5 0 0 1 3 10.5z" fill="#ef4444" />
-      <path d="M6.5 5.5L10.5 8l-4 2.5z" fill="white" />
-    </svg>
-  `.trim();
-
-  return nativeImage.createFromDataURL(`data:image/svg+xml,${encodeURIComponent(svg)}`);
-};
+const createTrayIcon = (): string => getTrayIconPath();
 
 export class TrayController {
   private readonly tray = new Tray(createTrayIcon());
@@ -40,6 +32,7 @@ export class TrayController {
     private readonly handlers: TrayHandlers,
     private state: TrayState
   ) {
+    this.tray.setImage(createTrayIcon());
     this.tray.setToolTip("YouTube Subtitle Companion");
     this.tray.on("click", () => {
       if (this.state.overlayVisible) {

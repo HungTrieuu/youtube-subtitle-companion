@@ -23,7 +23,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     toggleOverlay: "Control+Alt+S",
     toggleInteraction: "Control+Alt+A",
     moveOverlay: "Control+Alt+Y",
-    temporaryDim: "Control+Alt+D",
+    temporaryDim: "Control+Alt+W",
     increaseFont: "Control+Alt+Up",
     decreaseFont: "Control+Alt+Down"
   }
