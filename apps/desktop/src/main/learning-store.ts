@@ -15,7 +15,9 @@ import { logger } from "./logger";
 
 const learningItemSchema = z.object({
   word: z.string().min(1),
+  wordTranslation: z.string().min(1).optional(),
   sentence: z.string().min(1),
+  sentenceTranslation: z.string().min(1).optional(),
   videoId: z.string().nullable(),
   videoTitle: z.string().nullable(),
   timestampMs: z.number().int().min(0),
@@ -293,7 +295,9 @@ export class LearningStore {
 
   private buildLearningItem(request: SaveLearningItemRequest): LearningItem {
     const word = normalizeLearningWord(request.word);
+    const wordTranslation = request.wordTranslation?.trim() || undefined;
     const sentence = request.sentence.trim();
+    const sentenceTranslation = request.sentenceTranslation?.trim() || undefined;
 
     if (!word) {
       throw new Error("The selected word is invalid.");
@@ -310,7 +314,9 @@ export class LearningStore {
     const savedAtDate = new Date();
     return {
       word,
+      wordTranslation,
       sentence,
+      sentenceTranslation,
       videoId: request.videoId?.trim() || null,
       videoTitle: request.videoTitle?.trim() || null,
       timestampMs: roundLearningTimestamp(Math.round(request.timestampMs)),
@@ -347,7 +353,9 @@ export class LearningStore {
 
     return {
       word,
+      wordTranslation: request.wordTranslation?.trim() || undefined,
       sentence,
+      sentenceTranslation: request.sentenceTranslation?.trim() || undefined,
       videoId: request.videoId?.trim() || null,
       videoTitle: request.videoTitle?.trim() || null,
       timestampMs: Math.round(request.timestampMs),

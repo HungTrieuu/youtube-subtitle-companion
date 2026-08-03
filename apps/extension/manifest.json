@@ -3,6 +3,7 @@
   "name": "YouTube Subtitle Companion",
   "version": "0.1.0",
   "description": "Reads YouTube subtitles and forwards them to the desktop overlay app.",
+  "permissions": ["tts", "scripting"],
   "host_permissions": ["https://www.youtube.com/*"],
   "background": {
     "service_worker": "background.js"

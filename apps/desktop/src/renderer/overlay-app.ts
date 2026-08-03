@@ -8,6 +8,7 @@ import type { DictionaryResult, SaveLearningItemRequest } from "../common/learni
 import { formatHotkeyLabel } from "../common/hotkey-label";
 import { normalizeLearningWord } from "../common/learning";
 import type { OverlayApi } from "../common/ipc";
+import type { SpeechLanguage } from "../common/tts";
 import type {
   AppConfig,
   OverlayConnectionState,
@@ -31,10 +32,12 @@ type PopupState =
   | {
       visible: true;
       word: string;
+      sentence: string;
       tokenId: string;
       lookupStatus: LookupStatus;
       result: DictionaryResult | null;
       message: string | null;
+      speaking: boolean;
       saving: boolean;
     };
 
@@ -92,6 +95,7 @@ let popupState: PopupState = {
 };
 let toastTimerId: number | null = null;
 let lastPopupReservedTop = 0;
+let speechRequestSequence = 0;
 
 const formatTime = (totalSeconds: number): string => {
   const safeSeconds = Math.max(0, Math.floor(totalSeconds));
@@ -152,6 +156,79 @@ const shorten = (value: string | null, maxLength: number): string | null => {
   }
 
   return value.length > maxLength ? `${value.slice(0, maxLength - 1)}...` : value;
+};
+
+const detectSpeechLanguage = (text: string): SpeechLanguage | undefined => {
+  const trimmed = text.trim();
+
+  if (!trimmed) {
+    return undefined;
+  }
+
+  if (/[àáảãạăắằẳẵặâấầẩẫậđèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵ]/i.test(trimmed)) {
+    return "vi-VN";
+  }
+
+  if (/^[\u0000-\u024f\s.,!?;:'"()\-0-9/]+$/.test(trimmed) && /[a-z]/i.test(trimmed)) {
+    return "en-US";
+  }
+
+  return undefined;
+};
+
+const bumpSpeechRequestSequence = (): number => {
+  speechRequestSequence += 1;
+  return speechRequestSequence;
+};
+
+const cancelSpeechRequest = () => {
+  bumpSpeechRequestSequence();
+};
+
+const getSpeechErrorMessage = (code: string): string => {
+  switch (code) {
+    case "invalid_text":
+      return "Không có câu để phát";
+    case "unavailable":
+      return "Chưa có extension YouTube đang kết nối";
+    case "unsupported":
+      return "Extension hiện tại chưa hỗ trợ nghe câu, hãy reload extension";
+    default:
+      return "Không thể phát giọng đọc";
+  }
+};
+
+const speakText = async (text: string) => {
+  const content = text.trim();
+
+  if (!content) {
+    showToast("Không có câu để phát");
+    return;
+  }
+
+  const requestId = bumpSpeechRequestSequence();
+  updatePopupState((state) => ({
+    ...state,
+    speaking: true
+  }));
+
+  const response = await window.overlayApi.speakSubtitle({
+    text: content,
+    language: detectSpeechLanguage(content)
+  });
+
+  if (requestId !== speechRequestSequence) {
+    return;
+  }
+
+  updatePopupState((state) => ({
+    ...state,
+    speaking: false
+  }));
+
+  if (!response.success) {
+    showToast(response.code === "speak_failed" ? response.error : getSpeechErrorMessage(response.code));
+  }
 };
 
 const isOverlayInteractive = (): boolean =>
@@ -692,6 +769,7 @@ const syncPopupWindowMetrics = () => {
 };
 
 const closeWordPopup = () => {
+  cancelSpeechRequest();
   popupState = {
     visible: false
   };
@@ -783,6 +861,46 @@ const createPopupButton = (
   return button;
 };
 
+const createPopupStatus = (message: string): HTMLDivElement => {
+  const status = document.createElement("div");
+  status.className = "popup-status";
+  status.textContent = message;
+  return status;
+};
+
+const renderPopupSentenceSection = (
+  state: Extract<PopupState, { visible: true }>
+): HTMLElement => {
+  const section = document.createElement("section");
+  section.className = "popup-sentence";
+
+  const label = document.createElement("div");
+  label.className = "popup-section-label";
+  label.textContent = "Câu hiện tại";
+  section.append(label);
+
+  const sentence = document.createElement("p");
+  sentence.className = "popup-sentence-original";
+  sentence.textContent = state.sentence;
+  section.append(sentence);
+
+  const translation = document.createElement("p");
+  translation.className = "popup-sentence-translation";
+
+  if (state.lookupStatus === "loading" || state.lookupStatus === "idle") {
+    translation.textContent = "Đang dịch cả câu...";
+    translation.dataset.pending = "true";
+  } else if (state.lookupStatus === "success" && state.result?.sentenceTranslation) {
+    translation.textContent = state.result.sentenceTranslation;
+  } else {
+    translation.textContent = "Chưa dịch được nghĩa của cả câu.";
+    translation.dataset.pending = "false";
+  }
+
+  section.append(translation);
+  return section;
+};
+
 const renderPopupMeaningList = (result: DictionaryResult): DocumentFragment => {
   const fragment = document.createDocumentFragment();
   const meanings = result.meanings.slice(0, MAX_MEANING_GROUPS);
@@ -833,18 +951,14 @@ const renderPopup = () => {
   wordPopupBodyElement.replaceChildren();
   wordPopupActionsElement.replaceChildren();
 
+  wordPopupBodyElement.append(renderPopupSentenceSection(popupState));
+
   if (popupState.lookupStatus === "loading" || popupState.lookupStatus === "idle") {
-    const status = document.createElement("div");
-    status.className = "popup-status";
-    status.textContent = "Đang tra nghĩa...";
-    wordPopupBodyElement.append(status);
+    wordPopupBodyElement.append(createPopupStatus("Đang tra nghĩa từ..."));
   } else if (popupState.lookupStatus === "success" && popupState.result) {
     wordPopupBodyElement.append(renderPopupMeaningList(popupState.result));
   } else if (popupState.lookupStatus !== "idle" && popupState.message) {
-    const status = document.createElement("div");
-    status.className = "popup-status";
-    status.textContent = popupState.message;
-    wordPopupBodyElement.append(status);
+    wordPopupBodyElement.append(createPopupStatus(popupState.message));
   }
 
   if (
@@ -852,19 +966,36 @@ const renderPopup = () => {
     popupState.lookupStatus === "loading" ||
     popupState.lookupStatus === "success"
   ) {
+    const speakDisabled = popupState.speaking;
+    const speakLabel = popupState.speaking ? "Đang phát..." : "Nghe câu";
+    const saveDisabled = popupState.saving || popupState.lookupStatus === "loading";
+    const saveLabel =
+      popupState.lookupStatus === "loading"
+        ? "Đang tra..."
+        : popupState.saving
+          ? "Đang lưu..."
+          : "Lưu câu";
+
     wordPopupActionsElement.append(
-      createPopupButton(popupState.saving ? "Đang lưu..." : "Lưu câu", () => {
+      createPopupButton(speakLabel, () => {
+        void speakText(popupState.sentence);
+      }, { disabled: speakDisabled }),
+      createPopupButton(saveLabel, () => {
         void saveSelectedWord();
-      }, { primary: true, disabled: popupState.saving }),
+      }, { primary: true, disabled: saveDisabled }),
       createPopupButton("Đóng", () => {
         closeWordPopup();
       })
     );
   } else {
+    const speakLabel = popupState.speaking ? "Đang phát..." : "Nghe câu";
     wordPopupActionsElement.append(
       createPopupButton("Thử lại", () => {
         void lookupSelectedWord();
       }, { primary: true }),
+      createPopupButton(speakLabel, () => {
+        void speakText(popupState.sentence);
+      }, { disabled: popupState.speaking }),
       createPopupButton(popupState.saving ? "Đang lưu..." : "Lưu câu", () => {
         void saveSelectedWord();
       }, { disabled: popupState.saving }),
@@ -885,10 +1016,11 @@ const openWordPopup = (token: HTMLElement) => {
     return;
   }
 
+  const sentence = currentSubtitle?.text.trim();
   const tokenId = token.dataset.tokenId;
   const word = token.dataset.normalizedWord;
 
-  if (!tokenId || !word) {
+  if (!tokenId || !word || !sentence) {
     return;
   }
 
@@ -896,10 +1028,12 @@ const openWordPopup = (token: HTMLElement) => {
   popupState = {
     visible: true,
     word,
+    sentence,
     tokenId,
     lookupStatus: "loading",
     result: null,
     message: null,
+    speaking: false,
     saving: false
   };
 
@@ -920,7 +1054,14 @@ const updatePopupState = (
 };
 
 const runDictionaryLookup = async (lookupWord: string, tokenId: string) => {
-  const response = await window.overlayApi.lookupDictionary(lookupWord);
+  const sentence =
+    popupState.visible && popupState.tokenId === tokenId && popupState.word === lookupWord
+      ? popupState.sentence
+      : undefined;
+  const response = await window.overlayApi.lookupDictionary({
+    word: lookupWord,
+    sentence
+  });
 
   if (!popupState.visible || popupState.tokenId !== tokenId || popupState.word !== lookupWord) {
     return;
@@ -975,14 +1116,17 @@ const lookupSelectedWord = async () => {
 };
 
 const saveSelectedWord = async () => {
-  if (!popupState.visible || popupState.saving || !currentSubtitle) {
+  if (!popupState.visible || popupState.saving) {
     return;
   }
 
   const request: SaveLearningItemRequest = {
     word: popupState.word,
-    sentence: currentSubtitle.text,
-    videoId: currentPlayerState?.videoId ?? currentConnection?.sourceVideoId ?? currentSubtitle.videoId,
+    wordTranslation: popupState.result?.shortTranslation,
+    sentence: popupState.sentence,
+    sentenceTranslation: popupState.result?.sentenceTranslation,
+    videoId:
+      currentPlayerState?.videoId ?? currentConnection?.sourceVideoId ?? currentSubtitle?.videoId ?? null,
     videoTitle: currentPlayerState?.title ?? currentConnection?.sourceTitle ?? null,
     timestampMs: Math.round(derivePlayerCurrentTime() * 1000)
   };
@@ -1175,6 +1319,7 @@ window.addEventListener("resize", () => {
 });
 
 closeOverlayButton.addEventListener("click", () => {
+  cancelSpeechRequest();
   window.overlayApi.toggleOverlay();
 });
 

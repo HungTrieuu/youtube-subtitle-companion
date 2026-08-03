@@ -7,7 +7,8 @@ export const EXTENSION_CAPABILITIES = [
   "player.seek",
   "player.rate",
   "video.metadata",
-  "player.command-ack"
+  "player.command-ack",
+  "speech.tts"
 ] as const;
 
 const baseMessageSchema = z.object({
@@ -116,6 +117,11 @@ export const playerCommandSchema = z.discriminatedUnion("command", [
   playerCommandBaseSchema.extend({
     command: z.literal("set_playback_rate"),
     rate: z.number().positive().finite()
+  }),
+  playerCommandBaseSchema.extend({
+    command: z.literal("speak_text"),
+    text: z.string().min(1).max(1000),
+    language: z.enum(["en-US", "vi-VN"]).optional()
   })
 ]);
 

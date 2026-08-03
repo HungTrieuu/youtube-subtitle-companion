@@ -10,6 +10,7 @@ import type { LearningStore } from "./learning-store";
 import type { OverlayWindowController } from "./overlay-window";
 import type { SavedWordsWindowController } from "./saved-words-window";
 import type { DesktopRuntimeStore } from "./state/desktop-runtime-store";
+import type { TextToSpeechService } from "./tts-service";
 import type { TrayController } from "./tray";
 import type { LocalWebSocketServer } from "./websocket-server";
 
@@ -29,6 +30,7 @@ export type AppContext = {
   trayController: TrayController | null;
   websocketServer: LocalWebSocketServer;
   dictionaryService: DictionaryService;
+  textToSpeechService: TextToSpeechService;
   learningStore: LearningStore;
   savedWordsWindow: SavedWordsWindowController | null;
   session: AppSessionState;

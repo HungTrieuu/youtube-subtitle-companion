@@ -31,7 +31,8 @@ export const DEFAULT_EXTENSION_CAPABILITIES: readonly ExtensionCapability[] = [
   "player.seek",
   "player.rate",
   "video.metadata",
-  "player.command-ack"
+  "player.command-ack",
+  "speech.tts"
 ];
 
 export const createTimestamp = (): number => Date.now();
@@ -104,6 +105,17 @@ export const createSetPlaybackRateCommand = (
   ...createPlayerCommandEnvelope(requestId),
   command: "set_playback_rate",
   rate
+});
+
+export const createSpeakTextCommand = (
+  text: string,
+  language?: "en-US" | "vi-VN",
+  requestId?: string
+): Extract<PlayerCommandMessage, { command: "speak_text" }> => ({
+  ...createPlayerCommandEnvelope(requestId),
+  command: "speak_text",
+  text,
+  ...(language ? { language } : {})
 });
 
 export const createPlayerCommandResultMessage = (

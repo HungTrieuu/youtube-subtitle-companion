@@ -13,7 +13,7 @@ import type { WebSocket } from "ws";
 import type { OverlayConnectionState } from "../../common/types";
 import { logger } from "../logger";
 import { selectActiveConnectionId, summarizeCommandlessState } from "./active-source-manager";
-import { CommandDispatcher } from "./command-dispatcher";
+import { CommandDispatcher, type CommandDispatchResult } from "./command-dispatcher";
 import { getTimelineSubtitle } from "./subtitle-timeline-engine";
 import {
   decodePayload,
@@ -165,11 +165,15 @@ export class LocalWebSocketServer {
     return this.getActiveClient()?.subtitle ?? null;
   }
 
+  public getActiveHello(): ExtensionHelloMessage | null {
+    return this.getActiveClient()?.hello ?? null;
+  }
+
   public async sendCommand(command: PlayerCommandMessage): Promise<boolean> {
     const active = this.getActiveClient();
 
     if (!active) {
-      logger.warn("ws", "Skipping player command because no active extension is ready", {
+      logger.warn("ws", "Skipping extension command because no active extension is ready", {
         command: command.command,
         activeConnectionId: this.activeConnectionId
       });
@@ -177,6 +181,23 @@ export class LocalWebSocketServer {
     }
 
     return this.commandDispatcher.dispatch(active.connectionId, active.hello, command);
+  }
+
+  public async sendCommandWithResult(command: PlayerCommandMessage): Promise<CommandDispatchResult> {
+    const active = this.getActiveClient();
+
+    if (!active) {
+      logger.warn("ws", "Skipping extension command because no active extension is ready", {
+        command: command.command,
+        activeConnectionId: this.activeConnectionId
+      });
+      return {
+        success: false,
+        error: "No active extension is ready."
+      };
+    }
+
+    return this.commandDispatcher.dispatchWithResult(active.connectionId, active.hello, command);
   }
 
   public reconnectAll(): void {

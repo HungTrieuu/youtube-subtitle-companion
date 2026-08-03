@@ -4,6 +4,7 @@ import path from "node:path";
 import { DesktopConfigStore } from "../config-store";
 import { DictionaryService } from "../dictionary";
 import { OverlayWindowController } from "../overlay-window";
+import { TextToSpeechService } from "../tts-service";
 import {
   createInitialDesktopRuntimeState,
   DesktopRuntimeStore
@@ -51,6 +52,7 @@ export const createAppContext = (): AppContext => {
       setConnectionState(context, connection);
     }
   });
+  const textToSpeechService = new TextToSpeechService(websocketServer);
 
   context = {
     configStore,
@@ -59,6 +61,7 @@ export const createAppContext = (): AppContext => {
     trayController: null,
     websocketServer,
     dictionaryService,
+    textToSpeechService,
     learningStore,
     savedWordsWindow: null,
     session: {

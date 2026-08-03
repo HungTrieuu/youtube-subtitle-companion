@@ -10,11 +10,16 @@ import { logger } from "../logger";
 const playerCommandAckCapability = "player.command-ack";
 const commandAckTimeoutMs = 2_500;
 
+export type CommandDispatchResult = {
+  success: boolean;
+  error?: string;
+};
+
 type PendingCommand = {
   connectionId: string;
   commandName: PlayerCommandMessage["command"];
   timeoutId: NodeJS.Timeout;
-  resolve(result: boolean): void;
+  resolve(result: CommandDispatchResult): void;
 };
 
 type CommandDispatcherOptions = {
@@ -33,6 +38,15 @@ export class CommandDispatcher {
     hello: ExtensionHelloMessage | null,
     command: PlayerCommandMessage
   ): Promise<boolean> {
+    const result = await this.dispatchWithResult(connectionId, hello, command);
+    return result.success;
+  }
+
+  public async dispatchWithResult(
+    connectionId: string,
+    hello: ExtensionHelloMessage | null,
+    command: PlayerCommandMessage
+  ): Promise<CommandDispatchResult> {
     const requiresAck = supportsCapability(hello, playerCommandAckCapability);
     const requestId = requiresAck ? command.requestId ?? createRequestId() : command.requestId;
     const payload = JSON.stringify(
@@ -40,14 +54,17 @@ export class CommandDispatcher {
     );
 
     if (!this.options.sendRaw(connectionId, payload)) {
-      logger.warn("ws", "Skipping player command because no active extension is ready", {
+      logger.warn("ws", "Skipping extension command because no active extension is ready", {
         command: command.command,
         activeConnectionId: connectionId
       });
-      return false;
+      return {
+        success: false,
+        error: "No active extension is ready."
+      };
     }
 
-    logger.debug("ws", "Sent player command to active extension", {
+    logger.debug("ws", "Sent extension command to active extension", {
       command: command.command,
       connectionId,
       requestId: requestId ?? null,
@@ -55,18 +72,23 @@ export class CommandDispatcher {
     });
 
     if (!requiresAck || !requestId) {
-      return true;
+      return {
+        success: true
+      };
     }
 
-    return new Promise<boolean>((resolve) => {
+    return new Promise<CommandDispatchResult>((resolve) => {
       const timeoutId = setTimeout(() => {
         this.pending.delete(requestId);
-        logger.warn("ws", "Timed out waiting for player command acknowledgement", {
+        logger.warn("ws", "Timed out waiting for extension command acknowledgement", {
           command: command.command,
           connectionId,
           requestId
         });
-        resolve(false);
+        resolve({
+          success: false,
+          error: "Timed out waiting for the extension command acknowledgement."
+        });
       }, commandAckTimeoutMs);
 
       this.pending.set(requestId, {
@@ -92,13 +114,13 @@ export class CommandDispatcher {
     this.pending.delete(message.requestId);
 
     if (message.success) {
-      logger.debug("ws", "Player command acknowledged successfully", {
+      logger.debug("ws", "Extension command acknowledged successfully", {
         command: pending.commandName,
         connectionId,
         requestId: message.requestId
       });
     } else {
-      logger.warn("ws", "Extension rejected player command", {
+      logger.warn("ws", "Extension rejected command", {
         command: pending.commandName,
         connectionId,
         requestId: message.requestId,
@@ -106,7 +128,10 @@ export class CommandDispatcher {
       });
     }
 
-    pending.resolve(message.success);
+    pending.resolve({
+      success: message.success,
+      ...(message.error ? { error: message.error } : {})
+    });
     return true;
   }
 
@@ -118,12 +143,15 @@ export class CommandDispatcher {
 
       clearTimeout(pending.timeoutId);
       this.pending.delete(requestId);
-      logger.warn("ws", "Cleared pending player command after extension disconnect", {
+      logger.warn("ws", "Cleared pending extension command after extension disconnect", {
         command: pending.commandName,
         connectionId,
         requestId
       });
-      pending.resolve(false);
+      pending.resolve({
+        success: false,
+        error: "The extension disconnected while handling the command."
+      });
     }
   }
 
@@ -131,7 +159,10 @@ export class CommandDispatcher {
     for (const [requestId, pending] of this.pending.entries()) {
       clearTimeout(pending.timeoutId);
       this.pending.delete(requestId);
-      pending.resolve(false);
+      pending.resolve({
+        success: false,
+        error: `The pending extension command ${requestId} was cleared.`
+      });
     }
   }
 }

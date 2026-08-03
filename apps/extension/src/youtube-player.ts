@@ -194,6 +194,9 @@ export class YouTubePlayerController {
       case "set_playback_rate":
         video.playbackRate = command.rate;
         break;
+
+      case "speak_text":
+        return false;
     }
 
     this.emitState();

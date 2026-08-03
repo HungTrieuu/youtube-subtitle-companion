@@ -15,11 +15,13 @@ import {
 import type {
   DeleteLearningItemRequest,
   DeleteLearningItemResponse,
+  DictionaryLookupRequest,
   DictionaryLookupResponse,
   LearningItemsResponse,
   SaveLearningItemRequest,
   SaveLearningItemResponse
 } from "../common/learning";
+import type { SpeakSubtitleRequest, SpeakSubtitleResponse } from "../common/tts";
 import type {
   AppConfig,
   OverlayConnectionState,
@@ -74,8 +76,10 @@ const api: OverlayApi = {
   setPopupMetrics: (payload: OverlayPopupMetrics) => {
     ipcRenderer.send(IPC_CHANNELS.setPopupMetrics, payload);
   },
-  lookupDictionary: (word: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.lookupDictionary, word) as Promise<DictionaryLookupResponse>,
+  lookupDictionary: (payload: DictionaryLookupRequest) =>
+    ipcRenderer.invoke(IPC_CHANNELS.lookupDictionary, payload) as Promise<DictionaryLookupResponse>,
+  speakSubtitle: (payload: SpeakSubtitleRequest) =>
+    ipcRenderer.invoke(IPC_CHANNELS.speakSubtitle, payload) as Promise<SpeakSubtitleResponse>,
   saveLearningItem: (payload: SaveLearningItemRequest) =>
     ipcRenderer.invoke(IPC_CHANNELS.saveLearningItem, payload) as Promise<SaveLearningItemResponse>,
   getLearningItems: () =>

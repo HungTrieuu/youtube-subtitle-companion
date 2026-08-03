@@ -2,6 +2,7 @@ import {
   clampTime,
   createHelloMessage,
   createPlayerCommandResultMessage,
+  type PlayerCommandMessage,
   type PlayerStateMessage,
   type SubtitleTimelineCue
 } from "@youtube-subtitle-companion/shared";
@@ -27,9 +28,16 @@ import { YouTubePlayerController } from "./youtube-player";
 
 const clientId = crypto.randomUUID();
 const websocketUrl = "ws://127.0.0.1:8765";
+const CONTENT_SCRIPT_PING = "ysc:content-script-ping";
 const PAGE_BRIDGE_SCRIPT_ID = "yt-sub-companion-page-bridge";
 const STALE_STATE_TOLERANCE_SECONDS = 0.75;
 const SEEK_BACKWARD_THRESHOLD_SECONDS = 2;
+const STALE_EXTENSION_CONTEXT_MESSAGE =
+  "The YouTube tab is still using an old extension context. Refresh the tab after reloading the extension.";
+
+type ContentScriptPingMessage = {
+  type: typeof CONTENT_SCRIPT_PING;
+};
 
 let latestState: PlayerStateMessage | null = null;
 let latestSubtitle: SubtitlePayload | null = null;
@@ -57,6 +65,65 @@ const pendingTranscriptRequests = new Map<
     timeoutId: number;
   }
 >();
+
+const isContentScriptPingMessage = (value: unknown): value is ContentScriptPingMessage => {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  return (value as { type?: unknown }).type === CONTENT_SCRIPT_PING;
+};
+
+const normalizeRuntimeErrorMessage = (message: string): string =>
+  message.includes("Extension context invalidated")
+    ? STALE_EXTENSION_CONTEXT_MESSAGE
+    : message;
+
+chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
+  if (!isContentScriptPingMessage(message)) {
+    return false;
+  }
+
+  sendResponse({
+    ok: true
+  });
+  return false;
+});
+
+const speakTextWithChromeTts = async (
+  command: Extract<PlayerCommandMessage, { command: "speak_text" }>
+): Promise<boolean> =>
+  new Promise<boolean>((resolve, reject) => {
+    chrome.runtime.sendMessage(
+      {
+        type: "tts:speak",
+        text: command.text,
+        language: command.language
+      },
+      (response?: { success?: boolean; error?: string }) => {
+        const runtimeErrorMessage = chrome.runtime.lastError?.message;
+
+        if (runtimeErrorMessage) {
+          if (runtimeErrorMessage.includes("Extension context invalidated")) {
+            extensionLogger.warn("Detected stale extension context in YouTube tab; disconnecting websocket", {
+              href: location.href
+            });
+            websocketClient.disconnect();
+          }
+
+          reject(new Error(normalizeRuntimeErrorMessage(runtimeErrorMessage)));
+          return;
+        }
+
+        if (response?.success) {
+          resolve(true);
+          return;
+        }
+
+        reject(new Error(response?.error ?? "Chrome TTS failed."));
+      }
+    );
+  });
 
 const deriveStateAt = (state: PlayerStateMessage, now = Date.now()): PlayerStateMessage => {
   if (!state.playing) {
@@ -434,8 +501,12 @@ const websocketClient = new ExtensionWebSocketClient(websocketUrl, {
     extensionLogger.debug("Desktop app is currently disconnected");
   },
   onCommand: (message) => {
-    void playerController
-      .applyCommand(message)
+    const runCommand =
+      message.command === "speak_text"
+        ? speakTextWithChromeTts(message)
+        : playerController.applyCommand(message);
+
+    void runCommand
       .then((success) => {
         if (!message.requestId) {
           return;
@@ -445,7 +516,7 @@ const websocketClient = new ExtensionWebSocketClient(websocketUrl, {
           createPlayerCommandResultMessage(
             message.requestId,
             success,
-            success ? undefined : "Player command could not be applied."
+            success ? undefined : "Extension command could not be applied."
           )
         );
       })

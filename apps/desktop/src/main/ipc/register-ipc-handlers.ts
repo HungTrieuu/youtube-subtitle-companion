@@ -12,6 +12,7 @@ import {
   dictionaryLookupRequestSchema,
   saveLearningItemRequestSchema
 } from "../../common/learning";
+import { speakSubtitleRequestSchema } from "../../common/tts";
 import type { AppContext } from "../app-context";
 import {
   clampFont,
@@ -89,9 +90,9 @@ export const registerIpcHandlers = (context: AppContext): void => {
   });
 
   ipcMain.handle(IPC_CHANNELS.lookupDictionary, (_event, payload: unknown) => {
-    const parsedWord = dictionaryLookupRequestSchema.safeParse(payload);
+    const parsedRequest = dictionaryLookupRequestSchema.safeParse(payload);
 
-    if (!parsedWord.success) {
+    if (!parsedRequest.success) {
       return {
         success: false,
         code: "invalid_word" as const,
@@ -99,7 +100,21 @@ export const registerIpcHandlers = (context: AppContext): void => {
       };
     }
 
-    return context.dictionaryService.lookup(parsedWord.data);
+    return context.dictionaryService.lookupWithContext(parsedRequest.data);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.speakSubtitle, (_event, payload: unknown) => {
+    const parsedRequest = speakSubtitleRequestSchema.safeParse(payload);
+
+    if (!parsedRequest.success) {
+      return {
+        success: false,
+        code: "invalid_text" as const,
+        error: "The subtitle text payload is invalid."
+      };
+    }
+
+    return context.textToSpeechService.synthesize(parsedRequest.data);
   });
 
   ipcMain.handle(IPC_CHANNELS.saveLearningItem, (_event, payload: unknown) => {

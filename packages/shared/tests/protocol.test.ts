@@ -5,6 +5,7 @@ import {
   createHelloMessage,
   createPlayerCommandResultMessage,
   createSeekRelativeCommand,
+  createSpeakTextCommand,
   parseElectronMessage,
   parseExtensionMessage
 } from "../src/index";
@@ -74,6 +75,21 @@ describe("message schema validation", () => {
     expect(message).not.toBeNull();
     expect(message?.command).toBe("seek_relative");
     expect(message?.requestId).toBe("req-1");
+  });
+
+  it("accepts subtitle speech commands", () => {
+    const message = parseElectronMessage(
+      createSpeakTextCommand("Hello from subtitles", "en-US", "req-speak")
+    );
+
+    expect(message).toEqual({
+      type: "player.command",
+      timestamp: expect.any(Number),
+      requestId: "req-speak",
+      command: "speak_text",
+      text: "Hello from subtitles",
+      language: "en-US"
+    });
   });
 
   it("rejects invalid command payloads", () => {

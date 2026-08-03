@@ -8,12 +8,14 @@ import type {
 
 import type {
   DeleteLearningItemResponse,
+  DictionaryLookupRequest,
   DictionaryLookupResponse,
   LearningItemsResponse,
   DeleteLearningItemRequest,
   SaveLearningItemRequest,
   SaveLearningItemResponse
 } from "./learning";
+import type { SpeakSubtitleRequest, SpeakSubtitleResponse } from "./tts";
 import type { AppConfig, OverlayConnectionState, OverlayInitialState } from "./types";
 
 export const IPC_CHANNELS = {
@@ -31,6 +33,7 @@ export const IPC_CHANNELS = {
   openContextMenu: "overlay:open-context-menu",
   setPopupMetrics: "overlay:set-popup-metrics",
   lookupDictionary: "overlay:lookup-dictionary",
+  speakSubtitle: "overlay:speak-subtitle",
   saveLearningItem: "overlay:save-learning-item",
   getLearningItems: "overlay:get-learning-items",
   deleteLearningItem: "overlay:delete-learning-item",
@@ -66,7 +69,8 @@ export type OverlayApi = {
   adjustFont(delta: number): void;
   openContextMenu(payload: OverlayContextMenuRequest): Promise<void>;
   setPopupMetrics(payload: OverlayPopupMetrics): void;
-  lookupDictionary(word: string): Promise<DictionaryLookupResponse>;
+  lookupDictionary(payload: DictionaryLookupRequest): Promise<DictionaryLookupResponse>;
+  speakSubtitle(payload: SpeakSubtitleRequest): Promise<SpeakSubtitleResponse>;
   saveLearningItem(payload: SaveLearningItemRequest): Promise<SaveLearningItemResponse>;
   getLearningItems(): Promise<LearningItemsResponse>;
   deleteLearningItem(payload: DeleteLearningItemRequest): Promise<DeleteLearningItemResponse>;

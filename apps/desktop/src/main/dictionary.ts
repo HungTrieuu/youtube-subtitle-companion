@@ -27,10 +27,10 @@ const getText = (value: unknown): string | undefined => {
 const getRecord = (value: unknown): Record<string, unknown> | undefined =>
   isRecord(value) ? value : undefined;
 
-const normalizeShortTranslation = (word: string, value: unknown): string | undefined => {
+const normalizeTranslatedText = (sourceText: string, value: unknown): string | undefined => {
   const text = getText(value);
 
-  if (!text || text.toLowerCase() === word.toLowerCase()) {
+  if (!text || text.toLowerCase() === sourceText.toLowerCase()) {
     return undefined;
   }
 
@@ -104,10 +104,10 @@ const extractMeanings = (entries: unknown[]): DictionaryResult["meanings"] => {
   return meanings;
 };
 
-const extractShortTranslation = (word: string, payload: unknown): string | undefined => {
+const extractTranslation = (sourceText: string, payload: unknown): string | undefined => {
   const root = getRecord(payload);
   const responseData = getRecord(root?.responseData);
-  const direct = normalizeShortTranslation(word, responseData?.translatedText);
+  const direct = normalizeTranslatedText(sourceText, responseData?.translatedText);
 
   if (direct) {
     return direct;
@@ -122,7 +122,7 @@ const extractShortTranslation = (word: string, payload: unknown): string | undef
       continue;
     }
 
-    const translation = normalizeShortTranslation(word, match.translation);
+    const translation = normalizeTranslatedText(sourceText, match.translation);
 
     if (translation) {
       return translation;
@@ -135,8 +135,8 @@ const extractShortTranslation = (word: string, payload: unknown): string | undef
 export class FreeDictionaryProvider implements DictionaryProvider {
   public async lookup(word: string): Promise<DictionaryResult> {
     const dictionaryPromise = this.lookupEnglishDictionary(word);
-    const translationPromise = this.lookupVietnameseGloss(word).catch((error: unknown) => {
-      logger.debug("dictionary", "Vietnamese translation lookup failed", {
+    const translationPromise = this.lookupVietnameseTranslation(word).catch((error: unknown) => {
+      logger.debug("dictionary", "Vietnamese word translation lookup failed", {
         word,
         error: error instanceof Error ? error.message : String(error)
       });
@@ -151,6 +151,17 @@ export class FreeDictionaryProvider implements DictionaryProvider {
       ...result,
       shortTranslation
     };
+  }
+
+  public async translateText(sourceText: string): Promise<string | undefined> {
+    return this.lookupVietnameseTranslation(sourceText).catch((error: unknown) => {
+      logger.debug("dictionary", "Vietnamese sentence translation lookup failed", {
+        sentence: sourceText,
+        error: error instanceof Error ? error.message : String(error)
+      });
+
+      return undefined;
+    });
   }
 
   private async lookupEnglishDictionary(word: string): Promise<DictionaryResult> {
@@ -216,7 +227,7 @@ export class FreeDictionaryProvider implements DictionaryProvider {
     }
   }
 
-  private async lookupVietnameseGloss(word: string): Promise<string | undefined> {
+  private async lookupVietnameseTranslation(sourceText: string): Promise<string | undefined> {
     const controller = new AbortController();
     const timeout = setTimeout(() => {
       controller.abort();
@@ -224,7 +235,7 @@ export class FreeDictionaryProvider implements DictionaryProvider {
 
     try {
       const response = await fetch(
-        `${TRANSLATION_ENDPOINT}?q=${encodeURIComponent(word)}&langpair=en|vi`,
+        `${TRANSLATION_ENDPOINT}?q=${encodeURIComponent(sourceText)}&langpair=en|vi`,
         {
           signal: controller.signal,
           headers: {
@@ -238,7 +249,7 @@ export class FreeDictionaryProvider implements DictionaryProvider {
         throw new Error(`Translation provider returned HTTP ${response.status}.`);
       }
 
-      return extractShortTranslation(word, payload);
+      return extractTranslation(sourceText, payload);
     } finally {
       clearTimeout(timeout);
     }
@@ -246,15 +257,27 @@ export class FreeDictionaryProvider implements DictionaryProvider {
 }
 
 export class DictionaryService {
-  private readonly cache = new Map<string, DictionaryLookupResponse>();
-  private readonly inflight = new Map<string, Promise<DictionaryLookupResponse>>();
+  private readonly wordCache = new Map<string, DictionaryLookupResponse>();
+  private readonly wordInflight = new Map<string, Promise<DictionaryLookupResponse>>();
+  private readonly sentenceCache = new Map<string, string | undefined>();
+  private readonly sentenceInflight = new Map<string, Promise<string | undefined>>();
 
   public constructor(
     private readonly provider: DictionaryProvider = new FreeDictionaryProvider()
   ) {}
 
   public async lookup(rawWord: string): Promise<DictionaryLookupResponse> {
-    const word = normalizeLearningWord(rawWord);
+    return this.lookupWithContext({
+      word: rawWord
+    });
+  }
+
+  public async lookupWithContext(request: {
+    word: string;
+    sentence?: string;
+  }): Promise<DictionaryLookupResponse> {
+    const word = normalizeLearningWord(request.word);
+    const sentence = request.sentence?.trim() || undefined;
 
     if (!word) {
       return {
@@ -264,12 +287,38 @@ export class DictionaryService {
       };
     }
 
-    const cached = this.cache.get(word);
-    if (cached) {
-      return cached;
+    const dictionaryResponse = await this.lookupWord(word);
+
+    if (!dictionaryResponse.success) {
+      return dictionaryResponse;
     }
 
-    const inflight = this.inflight.get(word);
+    if (!sentence) {
+      return dictionaryResponse;
+    }
+
+    const sentenceTranslation = await this.lookupSentenceTranslation(sentence);
+
+    if (!sentenceTranslation) {
+      return dictionaryResponse;
+    }
+
+    return {
+      success: true,
+      result: {
+        ...dictionaryResponse.result,
+        sentenceTranslation
+      }
+    };
+  }
+
+  private lookupWord(word: string): Promise<DictionaryLookupResponse> {
+    const cached = this.wordCache.get(word);
+    if (cached) {
+      return Promise.resolve(cached);
+    }
+
+    const inflight = this.wordInflight.get(word);
     if (inflight) {
       return inflight;
     }
@@ -282,7 +331,7 @@ export class DictionaryService {
           result
         } as const;
 
-        this.cache.set(word, response);
+        this.wordCache.set(word, response);
         return response;
       })
       .catch<DictionaryLookupResponse>((error: unknown) => {
@@ -300,7 +349,7 @@ export class DictionaryService {
               };
 
         if (response.code === "not_found") {
-          this.cache.set(word, response);
+          this.wordCache.set(word, response);
         }
 
         logger.warn("dictionary", "Dictionary lookup failed", {
@@ -312,10 +361,46 @@ export class DictionaryService {
         return response;
       })
       .finally(() => {
-        this.inflight.delete(word);
+        this.wordInflight.delete(word);
       });
 
-    this.inflight.set(word, request);
+    this.wordInflight.set(word, request);
+    return request;
+  }
+
+  private lookupSentenceTranslation(sentence: string): Promise<string | undefined> {
+    if (!this.provider.translateText) {
+      return Promise.resolve(undefined);
+    }
+
+    if (this.sentenceCache.has(sentence)) {
+      return Promise.resolve(this.sentenceCache.get(sentence));
+    }
+
+    const inflight = this.sentenceInflight.get(sentence);
+    if (inflight) {
+      return inflight;
+    }
+
+    const request = this.provider
+      .translateText(sentence)
+      .then((translation) => {
+        this.sentenceCache.set(sentence, translation);
+        return translation;
+      })
+      .catch((error: unknown) => {
+        logger.warn("dictionary", "Sentence translation lookup failed", {
+          sentence,
+          error: error instanceof Error ? error.message : String(error)
+        });
+
+        return undefined;
+      })
+      .finally(() => {
+        this.sentenceInflight.delete(sentence);
+      });
+
+    this.sentenceInflight.set(sentence, request);
     return request;
   }
 }

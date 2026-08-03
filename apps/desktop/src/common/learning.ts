@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export interface DictionaryProvider {
   lookup(word: string): Promise<DictionaryResult>;
+  translateText?(sourceText: string): Promise<string | undefined>;
 }
 
 export const dictionaryMeaningSchema = z.object({
@@ -12,6 +13,7 @@ export const dictionaryMeaningSchema = z.object({
 export const dictionaryResultSchema = z.object({
   word: z.string().min(1),
   shortTranslation: z.string().min(1).optional(),
+  sentenceTranslation: z.string().min(1).optional(),
   phonetic: z.string().min(1).optional(),
   meanings: z.array(dictionaryMeaningSchema),
   source: z.string().min(1).optional()
@@ -25,7 +27,10 @@ export const dictionaryLookupCodeSchema = z.enum([
   "lookup_error"
 ]);
 
-export const dictionaryLookupRequestSchema = z.string().trim().min(1);
+export const dictionaryLookupRequestSchema = z.object({
+  word: z.string().trim().min(1),
+  sentence: z.string().trim().min(1).optional()
+});
 
 export const dictionaryLookupResponseSchema = z.discriminatedUnion("success", [
   z.object({
@@ -41,7 +46,9 @@ export const dictionaryLookupResponseSchema = z.discriminatedUnion("success", [
 
 export const learningItemSchema = z.object({
   word: z.string().min(1),
+  wordTranslation: z.string().min(1).optional(),
   sentence: z.string().min(1),
+  sentenceTranslation: z.string().min(1).optional(),
   videoId: z.string().min(1).nullable(),
   videoTitle: z.string().min(1).nullable(),
   timestampMs: z.number().finite().min(0),
@@ -90,6 +97,7 @@ export const deleteLearningItemResponseSchema = z.discriminatedUnion("success", 
 ]);
 
 export type DictionaryResult = z.infer<typeof dictionaryResultSchema>;
+export type DictionaryLookupRequest = z.infer<typeof dictionaryLookupRequestSchema>;
 export type DictionaryLookupResponse = z.infer<typeof dictionaryLookupResponseSchema>;
 export type LearningItem = z.infer<typeof learningItemSchema>;
 export type SaveLearningItemRequest = z.infer<typeof saveLearningItemRequestSchema>;

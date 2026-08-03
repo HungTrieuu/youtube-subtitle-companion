@@ -19,17 +19,18 @@
 - Restart `pnpm dev:desktop` after changing `apps/desktop/src/main/*` or `apps/desktop/src/preload/*`.
 
 ## Module Boundaries
-- `packages/shared`: cross-workspace protocol, schemas, source-selection, reconnect, player helpers.
-- `apps/desktop/src/common`: desktop IPC and renderer/main shared contracts.
-- `apps/desktop/src/main`: Electron main, runtime state, bridge, tray, persistence, IPC handlers.
+- `packages/shared`: cross-workspace protocol, schemas, capability negotiation, source-selection, reconnect, player/speech helpers.
+- `apps/desktop/src/common`: desktop IPC and renderer/main shared contracts, including learning and TTS schemas.
+- `apps/desktop/src/main`: Electron main, runtime state, bridge, TTS service, tray, persistence, IPC handlers.
 - `apps/desktop/src/preload`: typed bridge only. Never expose raw `ipcRenderer`.
 - `apps/desktop/src/renderer`: overlay and saved-words UI only. Never import `main/*`.
-- `apps/extension/src`: YouTube page integration, subtitle extraction, websocket client. Never import desktop code.
+- `apps/extension/src`: YouTube page integration, subtitle extraction, websocket client, background TTS/reinjection helpers. Never import desktop code.
 
 ## Main / Renderer / Extension Rules
 - Electron Main is the source of truth for shared desktop runtime state.
 - Renderer keeps ephemeral UI state only: popup loading, DOM anchor, scroll, transient selection.
 - Extension keeps page-scoped player and subtitle state only.
+- Extension background owns browser-only capabilities such as `chrome.tts` and content-script reinjection.
 - Keep transport, business logic, state, and UI in separate modules where possible.
 - Use shared actions for the same behavior across tray, hotkeys, and IPC.
 - WebSocket must stay on `127.0.0.1`.
@@ -37,9 +38,10 @@
 
 ## Contracts
 - Extension ↔ Desktop protocol lives in `packages/shared/src/*`.
-- Desktop IPC contracts live in `apps/desktop/src/common/*`.
+- Desktop IPC contracts live in `apps/desktop/src/common/*`, including `common/tts.ts`.
 - Runtime schema is the source of truth. Infer TypeScript types from schemas where practical.
-- Learning JSON shape and app data paths must stay backward-compatible.
+- Capability-gate optional extension features such as `speech.tts` before dispatching commands.
+- Learning JSON shape, optional translation fields, and app data paths must stay backward-compatible.
 
 ## Validation Checklist
 - `git diff --check`

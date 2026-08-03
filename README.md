@@ -2,7 +2,7 @@
 
 `youtube-subtitle-companion` is a local-first desktop subtitle overlay for YouTube.
 
-It uses a Chrome-compatible extension to read the active YouTube player and captions, sends that data over a localhost WebSocket, and renders subtitles in a transparent Electron overlay that can stay visible while Chrome is in the background or minimized.
+It uses a Chrome-compatible extension to read the active YouTube player and captions, sends that data over a localhost WebSocket, and renders subtitles in a transparent Electron overlay that can stay visible while Chrome is in the background or minimized. The overlay popup can look up a word, translate the full subtitle sentence, save both translations locally, and ask the connected browser extension to speak the current sentence.
 
 ## Quick Start
 
@@ -25,6 +25,8 @@ Then:
 3. Click `Load unpacked`
 4. Select `dist/extension`
 5. Open a normal YouTube watch page with `CC` enabled
+
+If you reload the unpacked extension after rebuilding, the background worker will try to reinject the content script into already-open YouTube tabs. Refresh the tab if commands still report an old extension context.
 
 ## Commands
 
@@ -61,9 +63,10 @@ pnpm package:win
 1. Pause the YouTube video.
 2. Press `Ctrl+Alt+A`.
 3. Click a word in the current subtitle cue.
-4. The dictionary popup opens immediately.
-5. Click `Lưu câu` to save the word and sentence locally.
-6. Open `Saved words` from the tray or overlay context menu to review or delete saved items.
+4. The popup opens with the current sentence, dictionary meanings, and a sentence translation when available.
+5. Click `Nghe câu` to ask the connected extension to speak the current subtitle sentence with Chrome TTS.
+6. Click `Lưu câu` to save the word, sentence, and any available translations locally.
+7. Open `Saved words` from the tray or overlay context menu to review or delete saved items.
 
 ## Storage
 
@@ -79,14 +82,16 @@ Learning items that the user explicitly saves are stored locally as JSON files u
 - Windows: `%APPDATA%/youtube-subtitle-companion/learning-data`
 - Linux: `~/.config/youtube-subtitle-companion/learning-data`
 
-The learning JSON format is local-only and append/delete based. There is no cloud sync or backend.
+Saved learning items can now include optional `wordTranslation` and `sentenceTranslation` fields. The learning JSON format remains local-only, append/delete based, and backward-compatible with older saved files. There is no cloud sync or backend.
 
 ## Security and Privacy
 
 - WebSocket listens only on `ws://127.0.0.1:8765`.
 - There is no cloud subtitle history, analytics service, or backend.
 - Only learning items that the user explicitly saves are written to disk.
-- Dictionary lookup may send the selected word to the configured external dictionary provider.
+- Dictionary lookup may send the selected word and current subtitle sentence to the configured external dictionary/translation provider.
+- Subtitle speech is delegated to the Chrome extension through `chrome.tts`; actual voice availability depends on the browser, OS, and installed speech engines.
+- The extension requests `tts` and `scripting` permissions to support subtitle speech and reinject content scripts into existing YouTube tabs after reload.
 - Renderer stays sandboxed with `contextIsolation: true` and no Node integration.
 - Preload exposes a narrow typed API instead of raw `ipcRenderer`.
 
@@ -96,7 +101,7 @@ The learning JSON format is local-only and append/delete based. There is no clou
 
 - Start the desktop app first.
 - Reload the unpacked extension after rebuilding.
-- Refresh the YouTube tab if it was already open.
+- The background worker now tries to reinject the content script into already-open YouTube tabs, but refresh the tab if playback or speech commands still report an old extension context.
 
 ### Subtitle updates stop in the background
 
@@ -107,6 +112,12 @@ The learning JSON format is local-only and append/delete based. There is no clou
 
 - Another app or desktop environment may already own the shortcut.
 - On Linux, test again in a real `x11` session before changing code.
+
+### The `Nghe câu` button does not work
+
+- Reload the unpacked extension if the overlay says the connected extension does not support subtitle speech.
+- On Linux, Chrome may report no usable TTS voices; install or enable a speech engine or voice backend and try again.
+- Speech is sent through the active YouTube extension connection, so it will fail while the desktop app is disconnected.
 
 ### The overlay is visible but cannot be clicked
 

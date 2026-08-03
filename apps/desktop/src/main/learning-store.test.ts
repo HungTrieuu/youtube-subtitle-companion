@@ -136,6 +136,23 @@ describe("LearningStore", () => {
     expect(items.map((item) => item.word)).toEqual(["development", "learning"]);
   });
 
+  it("persists optional word and sentence translations when provided", async () => {
+    await store.save(
+      createRequest({
+        wordTranslation: "sự phát triển",
+        sentenceTranslation: "Việc phát triển phần mềm đòi hỏi học hỏi liên tục."
+      })
+    );
+
+    await expect(readSavedItems()).resolves.toMatchObject([
+      {
+        word: "development",
+        wordTranslation: "sự phát triển",
+        sentenceTranslation: "Việc phát triển phần mềm đòi hỏi học hỏi liên tục."
+      }
+    ]);
+  });
+
   it("does not save duplicates for the same word, sentence, video, and nearby timestamp", async () => {
     await store.save(createRequest());
 

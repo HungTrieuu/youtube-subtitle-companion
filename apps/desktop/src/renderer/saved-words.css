@@ -174,8 +174,13 @@ h1 {
 .learning-item-heading {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
+}
+
+.learning-word-block {
+  display: grid;
+  gap: 6px;
 }
 
 .learning-word {
@@ -187,6 +192,12 @@ h1 {
   color: var(--word-chip-text);
   font-size: 1rem;
   font-weight: 700;
+}
+
+.learning-word-translation {
+  color: var(--accent);
+  font-size: 0.92rem;
+  font-weight: 600;
 }
 
 .learning-meta {
@@ -223,6 +234,13 @@ h1 {
 .learning-sentence {
   margin: 0;
   font-size: 1rem;
+  line-height: 1.55;
+}
+
+.learning-sentence-translation {
+  margin: -2px 0 0;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
   line-height: 1.55;
 }
 

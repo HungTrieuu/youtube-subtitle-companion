@@ -94,7 +94,7 @@ export class ExtensionWebSocketClient {
       const command = parseElectronMessage(payload);
 
       if (command) {
-        extensionLogger.debug("Received player command from desktop app", {
+        extensionLogger.debug("Received extension command from desktop app", {
           command: command.command
         });
         this.handlers.onCommand(command);

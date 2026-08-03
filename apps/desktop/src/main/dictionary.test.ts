@@ -102,6 +102,23 @@ describe("FreeDictionaryProvider", () => {
     });
   });
 
+  it("translates a subtitle sentence when requested", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        createJsonResponse(200, {
+          responseData: {
+            translatedText: "Việc phát triển cần thời gian."
+          }
+        })
+      )
+    );
+
+    await expect(
+      new FreeDictionaryProvider().translateText("Development takes time.")
+    ).resolves.toBe("Việc phát triển cần thời gian.");
+  });
+
   it("maps a 404 response to a not_found error", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(createJsonResponse(404, {})));
 
@@ -154,5 +171,67 @@ describe("DictionaryService", () => {
 
     expect(first).toEqual(second);
     expect(provider.lookup).toHaveBeenCalledTimes(1);
+  });
+
+  it("merges cached word meanings with sentence translations", async () => {
+    const provider = {
+      lookup: vi.fn().mockResolvedValue({
+        word: "development",
+        shortTranslation: "sự phát triển",
+        meanings: [
+          {
+            definitions: ["the process of developing"]
+          }
+        ]
+      }),
+      translateText: vi
+        .fn()
+        .mockResolvedValueOnce("Việc phát triển cần thời gian.")
+        .mockResolvedValueOnce("Phát triển cần sự kiên nhẫn.")
+    };
+    const service = new DictionaryService(provider);
+
+    const first = await service.lookupWithContext({
+      word: "development",
+      sentence: "Development takes time."
+    });
+    const second = await service.lookupWithContext({
+      word: "Development",
+      sentence: "Development takes time."
+    });
+    const third = await service.lookupWithContext({
+      word: "development",
+      sentence: "Development requires patience."
+    });
+
+    expect(first).toEqual({
+      success: true,
+      result: {
+        word: "development",
+        shortTranslation: "sự phát triển",
+        sentenceTranslation: "Việc phát triển cần thời gian.",
+        meanings: [
+          {
+            definitions: ["the process of developing"]
+          }
+        ]
+      }
+    });
+    expect(second).toEqual(first);
+    expect(third).toEqual({
+      success: true,
+      result: {
+        word: "development",
+        shortTranslation: "sự phát triển",
+        sentenceTranslation: "Phát triển cần sự kiên nhẫn.",
+        meanings: [
+          {
+            definitions: ["the process of developing"]
+          }
+        ]
+      }
+    });
+    expect(provider.lookup).toHaveBeenCalledTimes(1);
+    expect(provider.translateText).toHaveBeenCalledTimes(2);
   });
 });

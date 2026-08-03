@@ -133,12 +133,21 @@ const renderItems = (items: LearningItem[]) => {
             videoMetaParts.length > 0
               ? `<div class="learning-video">${videoMetaParts.join(" · ")}</div>`
               : "";
+          const wordTranslation = item.wordTranslation
+            ? `<div class="learning-word-translation">${escapeHtml(item.wordTranslation)}</div>`
+            : "";
+          const sentenceTranslation = item.sentenceTranslation
+            ? `<p class="learning-sentence-translation">${escapeHtml(item.sentenceTranslation)}</p>`
+            : "";
 
           return `
             <article class="learning-item">
               <div class="learning-item-topline">
                 <div class="learning-item-heading">
-                  <span class="learning-word">${escapeHtml(item.word)}</span>
+                  <div class="learning-word-block">
+                    <span class="learning-word">${escapeHtml(item.word)}</span>
+                    ${wordTranslation}
+                  </div>
                   <span class="learning-meta">${escapeHtml(formatSavedAt(item.savedAt))}</span>
                 </div>
                 <button
@@ -152,6 +161,7 @@ const renderItems = (items: LearningItem[]) => {
                 </button>
               </div>
               <p class="learning-sentence">${escapeHtml(item.sentence)}</p>
+              ${sentenceTranslation}
               ${videoMeta}
             </article>
           `;
